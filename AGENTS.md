@@ -27,7 +27,7 @@ internal/output/       --json envelope + table rendering, exit codes
 
 ## Style
 
-- `gofmt` clean, `go vet ./...` clean — both are CI gates.
+- `gofmt` clean, `go vet ./...` clean, `go test ./...` green — all CI gates.
 - Keep `internal/client/types.go` in lockstep with `gcp-note-taking-backend`'s `app/models/*.py` — snake_case JSON tags, field-for-field. If a backend model changes, update this file in the same PR (or immediately after) and note the drift risk in the commit message.
 - Commands stay thin (`cmd/`); HTTP/parsing logic lives in `internal/`.
 - Every command that returns data supports `--json` (stable, versioned schema — bump `output.SchemaVersion` deliberately on a breaking change, never silently).
@@ -41,13 +41,13 @@ internal/output/       --json envelope + table rendering, exit codes
 
 ## CI gates
 
-- `gofmt -l .` empty, `go vet ./...` clean, cross-compile matrix (linux/darwin amd64+arm64, windows/amd64) builds clean.
+- `gofmt -l .` empty, `go vet ./...` clean, `go test ./...` green, cross-compile matrix (linux/darwin amd64+arm64, windows/amd64) builds clean.
 
 ## Before you open a PR
 
 - `gofmt -l . && go vet ./... && go build ./...` all pass.
 - If you touched `internal/client/types.go`, confirm it still matches the backend's current response shape (check `gcp-note-taking-backend/app/models/`).
-- Smoke-test the affected command against a running local backend (`docker-compose.yml` at the repo root of `gcp-note-taking-app`) before committing — this repo has no automated test suite yet.
+- `go test ./...` passes. Unit tests cover pure logic (`internal/output`, `cmd`'s body-text helpers) -- there's no mocked HTTP layer, so also smoke-test the affected command against a running local backend (`docker-compose.yml` at the repo root of `gcp-note-taking-app`) before committing.
 
 ---
 

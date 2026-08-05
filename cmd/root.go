@@ -15,6 +15,7 @@ var (
 	jsonOutput bool
 	apiBase    string
 	tokenFlag  string
+	clientID   string
 )
 
 var rootCmd = &cobra.Command{
@@ -39,6 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as stable, versioned JSON instead of a human-readable table")
 	rootCmd.PersistentFlags().StringVar(&apiBase, "api-base", "", "override the API base URL (default: "+client.DefaultAPIBase+", or $QUILLINK_API_BASE)")
 	rootCmd.PersistentFlags().StringVar(&tokenFlag, "token", "", "credential to use for this request (default: $QUILLINK_TOKEN, or the stored login)")
+	rootCmd.PersistentFlags().StringVar(&clientID, "client-id", "", "override the OAuth client_id used by login (default: $QUILLINK_CLIENT_ID, or the value baked in at build time)")
 }
 
 // resolveAPIBase applies the --api-base flag / QUILLINK_API_BASE env var /
@@ -72,4 +74,20 @@ func resolveToken() string {
 
 func newClient() *client.Client {
 	return client.New(resolveAPIBase(), resolveToken())
+}
+
+// resolveClientID applies the --client-id flag / QUILLINK_CLIENT_ID env
+// var / build-time default (client.CLIClientID, injected via -ldflags for
+// release builds -- see .goreleaser.yaml), in that precedence order. A
+// release binary is baked with one environment's client_id (prod); this
+// override is how `--api-base` can point the same binary at a different
+// environment (e.g. staging) during testing.
+func resolveClientID() string {
+	if clientID != "" {
+		return clientID
+	}
+	if env := os.Getenv("QUILLINK_CLIENT_ID"); env != "" {
+		return env
+	}
+	return client.CLIClientID
 }

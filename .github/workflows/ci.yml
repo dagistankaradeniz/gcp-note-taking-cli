@@ -34,6 +34,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Test
+        run: go test ./...
+
       - name: Build (host platform)
         run: go build ./...
 

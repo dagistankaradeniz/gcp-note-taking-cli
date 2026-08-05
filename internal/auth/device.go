@@ -9,11 +9,13 @@ import (
 
 // Login runs the OAuth 2.0 Device Authorization Grant (RFC 8628): request
 // a device code, print it for the user, then poll until the browser step
-// completes. Mirrors `gh auth login` / `gcloud auth login`.
-func Login(c *client.Client, print func(format string, a ...any)) (string, error) {
+// completes. Mirrors `gh auth login` / `gcloud auth login`. clientID is
+// resolved by the caller (see cmd.resolveClientID) -- this package doesn't
+// know about flags/env vars.
+func Login(c *client.Client, clientID string, print func(format string, a ...any)) (string, error) {
 	var codeResp client.DeviceCodeResponse
 	err := c.PostPublic("/api/oauth/device/code", client.DeviceCodeRequest{
-		ClientID: client.CLIClientID,
+		ClientID: clientID,
 		Scope:    client.CLIScopes,
 	}, &codeResp)
 	if err != nil {
@@ -37,7 +39,7 @@ func Login(c *client.Client, print func(format string, a ...any)) (string, error
 		err := c.PostPublic("/api/oauth/device/token", client.DeviceTokenRequest{
 			GrantType:  "urn:ietf:params:oauth:grant-type:device_code",
 			DeviceCode: codeResp.DeviceCode,
-			ClientID:   client.CLIClientID,
+			ClientID:   clientID,
 		}, &tokenResp)
 
 		if err == nil {

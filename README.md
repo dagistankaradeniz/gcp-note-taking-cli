@@ -50,7 +50,7 @@ quillink note list --json
 export QUILLINK_API_BASE=http://localhost:8000   # local backend, no Firebase Hosting rewrite
 ```
 
-Defaults to `https://note-taking-app-prod.web.app`.
+Defaults to `https://note-taking-app-prod.web.app`. Release binaries are built with the **prod** OAuth `client_id` baked in (see `.goreleaser.yaml`), so `quillink login` against a non-prod `--api-base` also needs a matching `--client-id` (or `QUILLINK_CLIENT_ID`) registered in that environment.
 
 ## Architecture
 

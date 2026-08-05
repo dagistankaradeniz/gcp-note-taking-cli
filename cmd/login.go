@@ -12,7 +12,7 @@ var loginCmd = &cobra.Command{
 	Short: "Sign in via the browser (OAuth 2.0 Device Authorization Grant)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
-		token, err := auth.Login(c, func(format string, a ...any) {
+		token, err := auth.Login(c, resolveClientID(), func(format string, a ...any) {
 			fmt.Printf(format, a...)
 		})
 		if err != nil {
