@@ -1,0 +1,5 @@
+/dist/
+/quillink
+*.exe
+*.test
+*.out

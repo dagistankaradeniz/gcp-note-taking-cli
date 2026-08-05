@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Registered once via `POST /api/admin/oauth-clients` against the
+          # prod backend (admin-only, see gcp-note-taking-backend
+          # app/routers/admin.py) and stored as a repo secret -- baked into
+          # every release binary so `quillink login` resolves against the
+          # real prod OAuth client rather than the local-dev placeholder in
+          # internal/client/oauth_client.go.
+          QUILLINK_CLI_OAUTH_CLIENT_ID: ${{ secrets.QUILLINK_CLI_OAUTH_CLIENT_ID }}

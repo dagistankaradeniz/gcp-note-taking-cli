@@ -1,0 +1,57 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: quillink
+    main: .
+    binary: quillink
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client.Version={{.Version}}
+      - -X github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client.CLIClientID={{.Env.QUILLINK_CLI_OAUTH_CLIENT_ID}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: quillink
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: dagistankaradeniz
+    name: gcp-note-taking-cli
+
+# Homebrew tap publishing (brew install quillink/tap/quillink) and the
+# winget manifest are deliberately not wired up yet -- both need a
+# one-time external setup (a homebrew-tap repo; a submitted manifest PR to
+# microsoft/winget-pkgs) that isn't automatable from this repo alone. See
+# README "Distribution" for the follow-up steps.
