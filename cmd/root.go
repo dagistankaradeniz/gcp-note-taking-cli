@@ -21,6 +21,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "quillink",
 	Short:         "Quillink CLI -- command-line access to your Quillink notes",
+	Version:       client.Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
