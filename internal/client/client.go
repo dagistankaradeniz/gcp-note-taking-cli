@@ -79,6 +79,11 @@ func (c *Client) Do(method, path string, query url.Values, body, out any) error 
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("User-Agent", "quillink-cli/"+Version)
+	// The usage-tracking middleware reads this specific header, not
+	// User-Agent (see gcp-note-taking-backend app/middleware/auth.py) --
+	// this is what lets a CLI version be deprecated deliberately (see CLI
+	// Access Confluence page, "Distribution").
+	req.Header.Set("X-Client-Version", "quillink-cli/"+Version)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -128,6 +133,7 @@ func (c *Client) PostPublic(path string, body, out any) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "quillink-cli/"+Version)
+	req.Header.Set("X-Client-Version", "quillink-cli/"+Version)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
