@@ -35,3 +35,7 @@ jobs:
           # real prod OAuth client rather than the local-dev placeholder in
           # internal/client/oauth_client.go.
           QUILLINK_CLI_OAUTH_CLIENT_ID: ${{ secrets.QUILLINK_CLI_OAUTH_CLIENT_ID }}
+          # Cross-repo push access to dagistankaradeniz/homebrew-quillink --
+          # the default GITHUB_TOKEN above is scoped to this repo only.
+          # See README "Distribution" for what this token can do.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
