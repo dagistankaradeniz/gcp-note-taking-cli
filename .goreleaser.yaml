@@ -50,8 +50,20 @@ release:
     owner: dagistankaradeniz
     name: gcp-note-taking-cli
 
-# Homebrew tap publishing (brew install quillink/tap/quillink) and the
-# winget manifest are deliberately not wired up yet -- both need a
-# one-time external setup (a homebrew-tap repo; a submitted manifest PR to
-# microsoft/winget-pkgs) that isn't automatable from this repo alone. See
+brews:
+  - name: quillink
+    repository:
+      owner: dagistankaradeniz
+      name: homebrew-quillink
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/dagistankaradeniz/gcp-note-taking-cli"
+    description: "Command-line client for Quillink"
+    install: |
+      bin.install "quillink"
+    test: |
+      system "#{bin}/quillink --version"
+
+# The winget manifest still needs a one-time manual PR to
+# microsoft/winget-pkgs -- not automatable from this repo alone. See
 # README "Distribution" for the follow-up steps.
