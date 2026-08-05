@@ -48,7 +48,16 @@ func New(baseURL, token string) *Client {
 	return &Client{
 		BaseURL: baseURL,
 		Token:   token,
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		HTTP: &http.Client{
+			Timeout: 30 * time.Second,
+			// A low-frequency CLI (single request, or a device-grant poll
+			// every few seconds) gains nothing from keep-alive connection
+			// reuse but is exposed to the classic Go http.Client race: the
+			// server closes an idle pooled connection right as a new
+			// request tries to reuse it, surfacing as a bare EOF instead
+			// of a clean error. One connection per request avoids it.
+			Transport: &http.Transport{DisableKeepAlives: true},
+		},
 	}
 }
 

@@ -48,7 +48,11 @@ func Login(c *client.Client, clientID string, print func(format string, a ...any
 
 		apiErr, ok := err.(*client.APIError)
 		if !ok {
-			return "", err
+			// A network-level error (timeout, connection reset) rather
+			// than an HTTP response -- treat as transient and keep
+			// polling until the device code's own expiry, same as a
+			// real gh/gcloud device-grant login would.
+			continue
 		}
 		switch apiErr.Detail {
 		case "authorization_pending":
