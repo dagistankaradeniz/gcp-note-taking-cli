@@ -3,9 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var noteCmd = &cobra.Command{
@@ -15,6 +17,10 @@ var noteCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(noteCmd)
+}
+
+func isTerminalStdin() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
 // textToBody wraps plain text in a minimal Tiptap document -- the shape

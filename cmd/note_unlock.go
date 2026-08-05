@@ -30,7 +30,7 @@ func resolvePassword() (string, error) {
 	if env := os.Getenv("QUILLINK_NOTE_PASSWORD"); env != "" {
 		return env, nil
 	}
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if isTerminalStdin() {
 		fmt.Fprint(os.Stderr, "Password: ")
 		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Fprintln(os.Stderr)

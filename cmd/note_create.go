@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
@@ -27,14 +29,26 @@ var noteCreateCmd = &cobra.Command{
 			Pinned:     noteCreatePinned,
 			EditorMode: "basic",
 		}
-		if noteCreateBodyJSON != "" {
+		switch {
+		case noteCreateBodyJSON != "":
 			body, err := bodyFromJSON(noteCreateBodyJSON)
 			if err != nil {
 				return err
 			}
 			req.Body = body
-		} else if noteCreateContent != "" {
+		case noteCreateContent != "":
 			req.Body = textToBody(noteCreateContent)
+		case !isTerminalStdin():
+			// No --content/--body-json and stdin isn't a terminal --
+			// read the body from a pipe, e.g. `echo "text" | quillink
+			// note create "Title"`.
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("read body from stdin: %w", err)
+			}
+			if len(data) > 0 {
+				req.Body = textToBody(string(data))
+			}
 		}
 		if noteCreateFolderID != "" {
 			req.FolderID = &noteCreateFolderID
