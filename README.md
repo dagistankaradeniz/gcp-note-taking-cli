@@ -30,6 +30,9 @@ quillink note search "query"
 quillink note unlock <id>              # prompts for a masked password
 quillink note delete <id>
 
+quillink org info                      # Team plan: your organization's plan/seats/status
+quillink org members                   # Team plan: your organization's members
+
 quillink logout
 ```
 
@@ -62,7 +65,9 @@ internal/auth/        credential storage (OS keychain + file fallback), device-g
 internal/output/      --json envelope + table rendering, exit codes
 ```
 
-`internal/client/types.go` mirrors `app/models/note.py` / `app/models/folder.py` / `app/models/api_access.py` in `gcp-note-taking-backend` field-for-field (snake_case JSON tags) — keep them in sync if those models change.
+`internal/client/types.go` mirrors `app/models/note.py` / `app/models/folder.py` / `app/models/organization.py` / `app/models/api_access.py` in `gcp-note-taking-backend` field-for-field (snake_case JSON tags) — keep them in sync if those models change.
+
+`org` is read-only: no `org invite`/`org remove`/`org set-role`/etc, since `/v1` has no `organizations:write` scope yet — those admin actions stay web-only for now (see the backend's `app/routers/v1_organizations.py` docstring).
 
 ## Known gaps vs. the CLI Access spec
 

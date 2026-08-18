@@ -109,3 +109,44 @@ type OAuthTokenResponse struct {
 	TokenType   string `json:"token_type"`
 	Scope       string `json:"scope"`
 }
+
+// Organizations (read-only in v1 -- see app/routers/v1_organizations.py's
+// module docstring for why there's no write endpoint yet). Mirrors
+// app/models/organization.py's OrganizationSummary/OrganizationDetail/
+// OrgMemberSummary/SeatAllocation/OrgAlert.
+
+type SeatAllocation struct {
+	Free int `json:"free"`
+	Plus int `json:"plus"`
+	Pro  int `json:"pro"`
+}
+
+type OrgAlert struct {
+	Type          string `json:"type"`
+	Severity      string `json:"severity"`
+	DaysRemaining int    `json:"days_remaining"`
+}
+
+type OrgMember struct {
+	UID              string  `json:"uid"`
+	Email            string  `json:"email"`
+	DisplayName      *string `json:"display_name"`
+	OrgRole          string  `json:"org_role"`
+	OrgJoinedAt      *string `json:"org_joined_at"`
+	SubscriptionPlan string  `json:"subscription_plan"`
+}
+
+type Organization struct {
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	PlanTier        string         `json:"plan_tier"`
+	SeatCount       int            `json:"seat_count"`
+	SeatAllocations SeatAllocation `json:"seat_allocations"`
+	MemberCount     int            `json:"member_count"`
+	Frozen          bool           `json:"frozen"`
+	FrozenAt        *string        `json:"frozen_at"`
+	CreatedAt       *string        `json:"created_at"`
+	Members         []OrgMember    `json:"members"`
+	SsoStatus       string         `json:"sso_status"`
+	Alerts          []OrgAlert     `json:"alerts"`
+}
