@@ -43,11 +43,12 @@ type NoteCreateRequest struct {
 }
 
 type NoteUpdateRequest struct {
-	Title    *string        `json:"title,omitempty"`
-	Body     map[string]any `json:"body,omitempty"`
-	FolderID *string        `json:"folder_id,omitempty"`
-	Tags     *[]string      `json:"tags,omitempty"`
-	Pinned   *bool          `json:"pinned,omitempty"`
+	Title          *string        `json:"title,omitempty"`
+	Body           map[string]any `json:"body,omitempty"`
+	FolderID       *string        `json:"folder_id,omitempty"`
+	Tags           *[]string      `json:"tags,omitempty"`
+	Pinned         *bool          `json:"pinned,omitempty"`
+	ExcludedFromAI *bool          `json:"excluded_from_ai,omitempty"`
 }
 
 type NoteUnlockRequest struct {

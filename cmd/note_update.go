@@ -9,12 +9,13 @@ import (
 )
 
 var (
-	noteUpdateTitle    string
-	noteUpdateContent  string
-	noteUpdateBodyJSON string
-	noteUpdateFolderID string
-	noteUpdateTags     []string
-	noteUpdatePinned   bool
+	noteUpdateTitle          string
+	noteUpdateContent        string
+	noteUpdateBodyJSON       string
+	noteUpdateFolderID       string
+	noteUpdateTags           []string
+	noteUpdatePinned         bool
+	noteUpdateExcludedFromAI bool
 )
 
 var noteUpdateCmd = &cobra.Command{
@@ -46,6 +47,9 @@ var noteUpdateCmd = &cobra.Command{
 		if flags.Changed("pinned") {
 			req.Pinned = &noteUpdatePinned
 		}
+		if flags.Changed("exclude-from-ai") {
+			req.ExcludedFromAI = &noteUpdateExcludedFromAI
+		}
 
 		c := newClient()
 		var note client.Note
@@ -68,5 +72,6 @@ func init() {
 	noteUpdateCmd.Flags().StringVar(&noteUpdateFolderID, "folder", "", "move to folder ID")
 	noteUpdateCmd.Flags().StringSliceVar(&noteUpdateTags, "tags", nil, "replace tags (comma-separated)")
 	noteUpdateCmd.Flags().BoolVar(&noteUpdatePinned, "pinned", false, "pin/unpin the note")
+	noteUpdateCmd.Flags().BoolVar(&noteUpdateExcludedFromAI, "exclude-from-ai", false, "exclude/include this note in AI features")
 	noteCmd.AddCommand(noteUpdateCmd)
 }
