@@ -27,8 +27,9 @@ quillink note list
 quillink note get <id>
 quillink note update <id> --title "New title" --pinned
 quillink note search "query"
-quillink note unlock <id>              # prompts for a masked password
-quillink note delete <id>
+quillink note lock <id>                # password-protect a note (Plus plan+), prompts twice to confirm
+quillink note unlock <id>              # reveal a password-protected note, prompts for a masked password
+quillink note delete <id>              # prompts for the password first if the note is locked
 
 quillink org info                      # Team plan: your organization's plan/seats/status
 quillink org members                   # Team plan: your organization's members
@@ -46,6 +47,16 @@ quillink note list --json
 ```
 
 `--token` is also accepted per-invocation. Never pass a note's unlock password as a literal flag — use an interactive terminal, `--password-stdin`, or `QUILLINK_NOTE_PASSWORD`.
+
+### Password-protected notes
+
+```sh
+quillink note lock <id>       # New password: / Confirm password: (interactive)
+quillink note unlock <id>     # Password: (interactive) -- prints the decrypted content
+quillink note delete <id>     # Password: (interactive) -- refuses to delete without it
+```
+
+`lock`/`unlock` use the exact same client-side AES-256-GCM + PBKDF2-SHA256 encryption as the web/mobile apps (`internal/notecrypto`, ported from `vaultCrypto.ts`) — the backend only ever receives an opaque ciphertext blob and a separately-derived verifier hash, never the password or plaintext body. A note locked from any client can be unlocked from any other. `note delete` on a locked note requires the password too: knowing you own a note isn't treated as enough to delete content you haven't proven you can actually read.
 
 ### Pointing at a different environment
 

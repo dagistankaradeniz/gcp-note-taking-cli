@@ -15,6 +15,9 @@ type Note struct {
 	Status          string         `json:"status"`
 	Pinned          bool           `json:"pinned"`
 	Locked          bool           `json:"locked"`
+	NoteEncrypted   bool           `json:"note_encrypted"`
+	LockSalt        *string        `json:"lock_salt"`
+	LockIterations  *int           `json:"lock_iterations"`
 	EditorMode      string         `json:"editor_mode"`
 	SizeBytes       int            `json:"size_bytes"`
 	CreatedAt       string         `json:"created_at"`
@@ -51,12 +54,36 @@ type NoteUpdateRequest struct {
 	ExcludedFromAI *bool          `json:"excluded_from_ai,omitempty"`
 }
 
-type NoteUnlockRequest struct {
-	Password string `json:"password"`
+// NoteLockRequest matches app.models.note.NoteLockRequest exactly:
+// verifier_hash/salt/iterations/encrypted_body are all computed
+// client-side (see internal/notecrypto) -- the server never sees the
+// password or plaintext body.
+type NoteLockRequest struct {
+	VerifierHash  string `json:"verifier_hash"`
+	Salt          string `json:"salt"`
+	Iterations    int    `json:"iterations"`
+	EncryptedBody string `json:"encrypted_body,omitempty"`
 }
 
+// NoteUnlockRequest matches app.models.note.NoteUnlockRequest: exactly
+// one of Password (legacy bcrypt-gated notes) or VerifierHash (current
+// client-side encrypted notes) applies, depending on the note's
+// NoteEncrypted flag.
+type NoteUnlockRequest struct {
+	Password     string `json:"password,omitempty"`
+	VerifierHash string `json:"verifier_hash,omitempty"`
+}
+
+// NoteUnlockResponse matches app.models.note.NoteUnlockResponse: the
+// legacy path returns Body directly (already plaintext server-side); the
+// encrypted path returns Encrypted=true plus the still-opaque
+// EncryptedBody/Salt/Iterations for the caller to decrypt locally.
 type NoteUnlockResponse struct {
-	Body map[string]any `json:"body"`
+	Body          map[string]any `json:"body"`
+	Encrypted     bool           `json:"encrypted"`
+	EncryptedBody string         `json:"encrypted_body"`
+	Salt          string         `json:"salt"`
+	Iterations    int            `json:"iterations"`
 }
 
 type Folder struct {
