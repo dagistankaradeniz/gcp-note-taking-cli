@@ -1,53 +1,53 @@
 package cmd
 
 import (
+	"fmt"
 	"net/url"
-	"strings"
+	"os"
+	"strconv"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-var noteSearchIncludeSensitive bool
+var (
+	noteSearchLimit            int
+	noteSearchIncludeSensitive bool
+)
 
-// The v1 API has no server-side search endpoint (see v1_notes.py's module
-// docstring -- search stays client-side, same constraint as the browser
-// app). `note search` lists notes and filters locally by title/body
-// substring match.
+// GET /v1/notes/search is a real server-side endpoint (v1_notes.py),
+// added specifically for API/MCP consumers -- it also correctly excludes
+// locked-note bodies from the substring match. Use it directly instead of
+// paging through notes and filtering client-side.
 var noteSearchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search notes by title/content (client-side, over your recent notes)",
+	Short: "Search notes by title/content (server-side, full account)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		query := strings.ToLower(args[0])
-
 		c := newClient()
 		var resp client.NoteListResponse
 		q := url.Values{}
-		q.Set("limit", "200")
-		if err := c.Do("GET", "/v1/notes", q, nil, &resp); err != nil {
+		q.Set("q", args[0])
+		q.Set("limit", strconv.Itoa(noteSearchLimit))
+		if err := c.Do("GET", "/v1/notes/search", q, nil, &resp); err != nil {
 			return err
 		}
-
-		matches := make([]client.Note, 0)
-		for _, n := range resp.Notes {
-			if strings.Contains(strings.ToLower(n.Title), query) ||
-				strings.Contains(strings.ToLower(bodyToText(n.Body)), query) {
-				matches = append(matches, n)
-			}
-		}
-		applySensitiveMasking(matches, noteSearchIncludeSensitive)
+		applySensitiveMasking(resp.Notes, noteSearchIncludeSensitive)
 
 		if jsonOutput {
-			return output.JSON(client.NoteListResponse{Notes: matches, Total: len(matches)})
+			return output.JSON(resp)
 		}
-		printNoteTable(matches)
+		printNoteTable(resp.Notes)
+		if resp.HasMore {
+			fmt.Fprintf(os.Stderr, "\nMore matches available. Narrow your query or raise --limit (currently %d).\n", noteSearchLimit)
+		}
 		return nil
 	},
 }
 
 func init() {
+	noteSearchCmd.Flags().IntVar(&noteSearchLimit, "limit", 50, "max matches to return")
 	noteSearchCmd.Flags().BoolVar(&noteSearchIncludeSensitive, "include-sensitive", false, "include masked/sensitive fields unmasked")
 	noteCmd.AddCommand(noteSearchCmd)
 }

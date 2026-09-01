@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
@@ -12,6 +14,7 @@ import (
 var (
 	noteListFolderID         string
 	noteListLimit            int
+	noteListStartAfter       string
 	noteListIncludeSensitive bool
 )
 
@@ -24,6 +27,9 @@ var noteListCmd = &cobra.Command{
 			q.Set("folder_id", noteListFolderID)
 		}
 		q.Set("limit", strconv.Itoa(noteListLimit))
+		if noteListStartAfter != "" {
+			q.Set("start_after", noteListStartAfter)
+		}
 
 		c := newClient()
 		var resp client.NoteListResponse
@@ -36,6 +42,10 @@ var noteListCmd = &cobra.Command{
 			return output.JSON(resp)
 		}
 		printNoteTable(resp.Notes)
+		if resp.HasMore && len(resp.Notes) > 0 {
+			last := resp.Notes[len(resp.Notes)-1]
+			fmt.Fprintf(os.Stderr, "\nMore notes available. Continue with:\n  quillink note list --start-after %s\n", last.ID)
+		}
 		return nil
 	},
 }
@@ -43,6 +53,7 @@ var noteListCmd = &cobra.Command{
 func init() {
 	noteListCmd.Flags().StringVar(&noteListFolderID, "folder", "", "filter by folder ID")
 	noteListCmd.Flags().IntVar(&noteListLimit, "limit", 50, "max notes to return")
+	noteListCmd.Flags().StringVar(&noteListStartAfter, "start-after", "", "resume listing after this note ID (see has_more/next page hint)")
 	noteListCmd.Flags().BoolVar(&noteListIncludeSensitive, "include-sensitive", false, "include masked/sensitive fields unmasked")
 	noteCmd.AddCommand(noteListCmd)
 }
