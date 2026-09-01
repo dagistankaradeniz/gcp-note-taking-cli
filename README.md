@@ -74,6 +74,14 @@ quillink workspace list                   # name, api_base, current marker, logg
 quillink workspace remove work-account
 ```
 
+`workspace login` runs the OAuth device grant by default, which needs a `client_id` registered against that environment (see below) -- for an environment without one yet (e.g. a fresh local backend), attach a Personal Access Token directly instead and it skips OAuth entirely:
+
+```sh
+quillink workspace add local --api-base http://localhost:8000
+quillink workspace login local --token qlk_pat_...
+# or: QUILLINK_TOKEN=qlk_pat_... quillink workspace login local
+```
+
 Resolution order for every command: `--token`/`--api-base` (or `$QUILLINK_TOKEN`/`$QUILLINK_API_BASE`) → `--workspace`/`$QUILLINK_WORKSPACE` (or the workspace set via `workspace use`) → the original single global login (unchanged for anyone who never touches `workspace`). Workspace metadata (no secrets) lives in `~/.config/quillink/workspaces.json`; each workspace's actual credential is a separate OS keyring entry (or file fallback), so logging into one never touches another's — and this same registry file is shared with `gcp-note-taking-mcp`, so a workspace defined here is immediately usable there via `QUILLINK_WORKSPACE`.
 
 ## Architecture

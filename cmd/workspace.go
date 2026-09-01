@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/auth"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
@@ -52,7 +53,7 @@ var workspaceAddCmd = &cobra.Command{
 
 var workspaceLoginCmd = &cobra.Command{
 	Use:   "login <name>",
-	Short: "Sign in to a workspace via the browser (OAuth device grant)",
+	Short: "Attach a credential to a workspace (PAT via --token/$QUILLINK_TOKEN, or OAuth device grant otherwise)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -64,16 +65,27 @@ var workspaceLoginCmd = &cobra.Command{
 		if !ok {
 			return fmt.Errorf("unknown workspace %q -- run `quillink workspace add %s --api-base <url>` first", name, name)
 		}
-		cid := w.ClientID
-		if cid == "" {
-			cid = resolveClientID()
+
+		// A PAT (--token or $QUILLINK_TOKEN) skips OAuth entirely --
+		// useful for environments like local dev that don't have an
+		// OAuth client_id registered yet (OAuth login would otherwise
+		// fail with "Unknown client_id").
+		token := tokenFlag
+		if token == "" {
+			token = os.Getenv("QUILLINK_TOKEN")
 		}
-		c := client.New(w.APIBase, "")
-		token, err := auth.Login(c, cid, func(format string, a ...any) {
-			fmt.Printf(format, a...)
-		})
-		if err != nil {
-			return err
+		if token == "" {
+			cid := w.ClientID
+			if cid == "" {
+				cid = resolveClientID()
+			}
+			c := client.New(w.APIBase, "")
+			token, err = auth.Login(c, cid, func(format string, a ...any) {
+				fmt.Printf(format, a...)
+			})
+			if err != nil {
+				return err
+			}
 		}
 		if err := auth.NewStoreFor(name).Save(token); err != nil {
 			return fmt.Errorf("save credential: %w", err)
