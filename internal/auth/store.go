@@ -14,34 +14,51 @@ import (
 
 const (
 	keyringService = "quillink-cli"
-	keyringUser    = "default"
+
+	// defaultName is the legacy single-credential slot used by
+	// `quillink login`/`logout`/`whoami` before workspaces existed.
+	// NewStore() always resolves to this name, so an existing user who
+	// never touches `quillink workspace` sees no change at all.
+	defaultName = "default"
 )
 
 // Store persists the CLI's credential (a PAT or a device-grant-issued
 // token) in the OS credential store where available, falling back to a
 // chmod 600 file -- headless Linux CI runners commonly lack a Secret
 // Service daemon, so this is a real fallback path, not an edge case.
-type Store struct{}
+//
+// Each Store is scoped to a name -- the legacy single slot ("default",
+// via NewStore) or a named workspace (via NewStoreFor) -- so multiple
+// environments/accounts can each hold their own credential side by side
+// (see internal/workspace).
+type Store struct {
+	name string
+}
 
-func NewStore() *Store { return &Store{} }
+func NewStore() *Store { return &Store{name: defaultName} }
+
+// NewStoreFor returns a Store scoped to a named workspace's credential
+// slot, independent from the legacy default slot and from every other
+// workspace's slot.
+func NewStoreFor(name string) *Store { return &Store{name: name} }
 
 func (s *Store) Save(token string) error {
-	if err := keyring.Set(keyringService, keyringUser, token); err == nil {
+	if err := keyring.Set(keyringService, s.name, token); err == nil {
 		return nil
 	}
 	return s.saveToFile(token)
 }
 
 func (s *Store) Load() (string, error) {
-	if token, err := keyring.Get(keyringService, keyringUser); err == nil {
+	if token, err := keyring.Get(keyringService, s.name); err == nil {
 		return token, nil
 	}
 	return s.loadFromFile()
 }
 
 func (s *Store) Delete() error {
-	_ = keyring.Delete(keyringService, keyringUser)
-	path, err := credentialFilePath()
+	_ = keyring.Delete(keyringService, s.name)
+	path, err := s.credentialFilePath()
 	if err != nil {
 		return nil
 	}
@@ -52,7 +69,7 @@ func (s *Store) Delete() error {
 }
 
 func (s *Store) saveToFile(token string) error {
-	path, err := credentialFilePath()
+	path, err := s.credentialFilePath()
 	if err != nil {
 		return err
 	}
@@ -66,7 +83,7 @@ func (s *Store) saveToFile(token string) error {
 }
 
 func (s *Store) loadFromFile() (string, error) {
-	path, err := credentialFilePath()
+	path, err := s.credentialFilePath()
 	if err != nil {
 		return "", err
 	}
@@ -80,10 +97,16 @@ func (s *Store) loadFromFile() (string, error) {
 	return string(data), nil
 }
 
-func credentialFilePath() (string, error) {
+// credentialFilePath keeps the legacy default slot's path byte-for-byte
+// unchanged (~/.config/quillink/credential) and puts every named
+// workspace's file-fallback credential in its own file alongside it.
+func (s *Store) credentialFilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "quillink", "credential"), nil
+	if s.name == defaultName {
+		return filepath.Join(home, ".config", "quillink", "credential"), nil
+	}
+	return filepath.Join(home, ".config", "quillink", "credentials", s.name), nil
 }

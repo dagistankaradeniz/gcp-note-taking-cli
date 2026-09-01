@@ -55,13 +55,35 @@ export QUILLINK_API_BASE=http://localhost:8000   # local backend, no Firebase Ho
 
 Defaults to `https://note-taking-app-prod.web.app`. Release binaries are built with the **prod** OAuth `client_id` baked in (see `.goreleaser.yaml`), so `quillink login` against a non-prod `--api-base` also needs a matching `--client-id` (or `QUILLINK_CLIENT_ID`) registered in that environment.
 
+### Workspaces (multiple environments/accounts)
+
+`--api-base`/`--client-id` above are per-invocation overrides for a single command. To switch between several environments or accounts *repeatedly* without retyping URLs every time, define named workspaces instead:
+
+```sh
+quillink workspace add staging --api-base https://staging.example.com
+quillink workspace login staging          # OAuth device grant, stored under "staging"
+
+quillink workspace add work-account --api-base https://note-taking-app-prod.web.app
+quillink workspace login work-account     # a second, independent login against the SAME prod environment
+
+quillink workspace use staging            # sets the default for future commands
+quillink note list                        # runs against staging
+quillink note list --workspace work-account   # one-off override, doesn't change the default
+
+quillink workspace list                   # name, api_base, current marker, logged-in status
+quillink workspace remove work-account
+```
+
+Resolution order for every command: `--token`/`--api-base` (or `$QUILLINK_TOKEN`/`$QUILLINK_API_BASE`) → `--workspace`/`$QUILLINK_WORKSPACE` (or the workspace set via `workspace use`) → the original single global login (unchanged for anyone who never touches `workspace`). Workspace metadata (no secrets) lives in `~/.config/quillink/workspaces.json`; each workspace's actual credential is a separate OS keyring entry (or file fallback), so logging into one never touches another's — and this same registry file is shared with `gcp-note-taking-mcp`, so a workspace defined here is immediately usable there via `QUILLINK_WORKSPACE`.
+
 ## Architecture
 
 ```
 main.go              entrypoint
-cmd/                 Cobra command tree (root, login, logout, whoami, note *)
+cmd/                 Cobra command tree (root, login, logout, whoami, note *, workspace *)
 internal/client/      /v1 + /api/oauth HTTP client, RFC 7807 error handling, wire types
 internal/auth/        credential storage (OS keychain + file fallback), device-grant flow
+internal/workspace/    named api-base/client_id registry (~/.config/quillink/workspaces.json)
 internal/output/      --json envelope + table rendering, exit codes
 ```
 

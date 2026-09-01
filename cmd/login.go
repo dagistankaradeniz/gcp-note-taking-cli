@@ -18,7 +18,7 @@ var loginCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := auth.NewStore().Save(token); err != nil {
+		if err := storeForCurrent().Save(token); err != nil {
 			return fmt.Errorf("save credential: %w", err)
 		}
 		fmt.Println("Logged in.")
