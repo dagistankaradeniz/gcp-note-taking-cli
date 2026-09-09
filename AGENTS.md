@@ -77,3 +77,32 @@ internal/output/       --json envelope + table rendering, exit codes
 
 ### Never commit
 Secrets, `.env`, OAuth client secrets, API tokens, real credential-store contents.
+
+<!-- SHARED-LICENSE-POLICY:START — keep byte-identical across every gcp-note-taking-* repo -->
+## Open Source License & Dependency Compliance (always enforced, even if not asked)
+
+This is commercial, proprietary-backend SaaS. A dependency's license is a legal-risk
+decision, not a style choice — apply this check on every dependency add/upgrade, and
+whenever asked to audit dependencies, with no need for the user to invoke it explicitly.
+
+- **Never add, upgrade to, or vendor** a package under **AGPL-3.0, SSPL, or another
+  network-copyleft license** (anything that can force disclosure of proprietary source
+  merely by hosting it as a service). If a task seems to need one, stop and propose a
+  permissively-licensed alternative instead of adding it.
+- **Flag, don't silently add**: GPL-2.0/3.0, LGPL (any version), MPL-2.0, and similar
+  copyleft licenses. These aren't auto-rejected — e.g. an MPL-2.0 build-only tool that
+  ships nothing to users is normally fine — but the tradeoff must be surfaced to the
+  user for a decision, not resolved unilaterally.
+- **Preferred / pre-approved**: MIT, Apache-2.0, BSD-2/3-Clause, ISC, 0BSD, Zlib,
+  Unlicense/CC0. Prefer these when a choice exists (e.g. dual-licensed packages).
+- Before adding a new dependency, check its license: `npx license-checker` (npm),
+  `pip-licenses` (Python), `go-licenses` (Go), the Maven POM's `<licenses>` block
+  (Gradle/Android), or the package's LICENSE file (Swift Package Manager /
+  Terraform registry). Don't rely on the package name/reputation alone.
+- If a scanner or CI check flags a license issue, fix or escalate it — never suppress,
+  ignore, or delete the finding to make a check pass.
+- This repo should have automated license/dependency scanning wired into CI (GitHub
+  Dependabot version+security updates, and/or a license-checker/Snyk-style CI gate on
+  copyleft licenses). If that's missing when you're touching CI config, flag it to the
+  user rather than assuming manual review is sufficient long-term.
+<!-- SHARED-LICENSE-POLICY:END -->

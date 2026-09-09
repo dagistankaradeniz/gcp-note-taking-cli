@@ -48,3 +48,25 @@ jobs:
           GOOS=darwin  GOARCH=amd64 go build -o /tmp/xcompile/darwin_amd64 .
           GOOS=darwin  GOARCH=arm64 go build -o /tmp/xcompile/darwin_arm64 .
           GOOS=windows GOARCH=amd64 go build -o /tmp/xcompile/windows_amd64.exe .
+
+  license-check:
+    name: Dependency License Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - run: go install github.com/google/go-licenses@latest
+
+      # AGPL/SSPL/GPL cannot legally be shipped in this CLI (see AGENTS.md,
+      # "Open Source License & Dependency Compliance") -- fail the build if
+      # one shows up in the module graph.
+      - name: Fail on disallowed licenses
+        run: |
+          go-licenses check ./... \
+            --disallowed_types=forbidden,restricted \
+            --ignore github.com/dagistankaradeniz/gcp-note-taking-cli
