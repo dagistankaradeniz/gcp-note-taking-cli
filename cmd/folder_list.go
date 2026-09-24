@@ -15,6 +15,10 @@ var folderListCmd = &cobra.Command{
 	Short: "List folders",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		q := url.Values{}
 		if folderListIncludeTrashed {
 			q.Set("include_trashed", "true")
@@ -22,6 +26,9 @@ var folderListCmd = &cobra.Command{
 		var resp client.FolderListResponse
 		if err := c.Do("GET", "/v1/folders", q, nil, &resp); err != nil {
 			return err
+		}
+		for i := range resp.Folders {
+			decryptFolderZK(dek, &resp.Folders[i])
 		}
 
 		if jsonOutput {

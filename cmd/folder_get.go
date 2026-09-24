@@ -14,10 +14,15 @@ var folderGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var folder client.Folder
 		if err := c.Do("GET", "/v1/folders/"+args[0], nil, nil, &folder); err != nil {
 			return err
 		}
+		decryptFolderZK(dek, &folder)
 
 		if jsonOutput {
 			return output.JSON(folder)

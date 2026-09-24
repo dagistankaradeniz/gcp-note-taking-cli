@@ -16,10 +16,15 @@ var noteGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var note client.Note
 		if err := c.Do("GET", "/v1/notes/"+args[0], nil, nil, &note); err != nil {
 			return err
 		}
+		decryptNoteZK(dek, &note)
 		applySensitiveMasking([]client.Note{note}, noteGetIncludeSensitive)
 
 		if jsonOutput {

@@ -40,6 +40,19 @@ default -- redirect or use --out.`,
 		}
 
 		c := newClient()
+		// Both export endpoints either render markdown server-side
+		// (impossible for ciphertext) or, for --all's ndjson default,
+		// would silently write out still-encrypted title/body/tags with
+		// no indication anything needs decrypting -- refuse clearly
+		// instead of either, without prompting for the Recovery
+		// Credential just to then say "not supported". Use `note get`/
+		// `note list` instead, which already decrypt locally.
+		if zk, err := isZkAccount(c); err != nil {
+			return err
+		} else if zk {
+			return fmt.Errorf("note export isn't supported yet for Zero-Knowledge accounts -- use note get/note list instead")
+		}
+
 		var data []byte
 		var err error
 		if noteExportAll {

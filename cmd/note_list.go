@@ -32,9 +32,16 @@ var noteListCmd = &cobra.Command{
 		}
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var resp client.NoteListResponse
 		if err := c.Do("GET", "/v1/notes", q, nil, &resp); err != nil {
 			return err
+		}
+		for i := range resp.Notes {
+			decryptNoteZK(dek, &resp.Notes[i])
 		}
 		applySensitiveMasking(resp.Notes, noteListIncludeSensitive)
 

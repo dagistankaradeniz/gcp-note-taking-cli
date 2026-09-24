@@ -267,6 +267,32 @@ type StatusResponse struct {
 	CredentialType string   `json:"credential_type"`
 }
 
+// Zero-Knowledge bootstrap -- read-only mirrors of app/models/zk.py's
+// ZkStatusResponse/ZkUnlockRequest/ZkUnlockResponse, reached through the
+// new /v1/zk endpoints (see app/routers/v1_zk.py). The CLI is decrypt-only
+// (see internal/zkcrypto) -- these fields are only ever the KDF params and
+// wrapped key material the server already treats as non-secret once a
+// caller is authenticated as the account owner.
+
+type ZkStatusResponse struct {
+	SecurityTier              string  `json:"security_tier"`
+	KdfAlgorithm              *string `json:"kdf_algorithm"`
+	Salt                      *string `json:"salt"`
+	KdfIterations             *int    `json:"kdf_iterations"`
+	KdfMemoryKiB              *int    `json:"kdf_memory_kib"`
+	KdfOps                    *int    `json:"kdf_ops"`
+	HasPendingCredentialReset bool    `json:"has_pending_credential_reset"`
+}
+
+type ZkUnlockRequest struct {
+	VerifierHash string `json:"verifier_hash"`
+}
+
+type ZkUnlockResponse struct {
+	WrappedDek   string `json:"wrapped_dek"`
+	WrappedDekIV string `json:"wrapped_dek_iv"`
+}
+
 // Device Authorization Grant (RFC 8628) -- app/models/api_access.py.
 
 type DeviceCodeRequest struct {
