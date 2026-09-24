@@ -129,6 +129,52 @@ func (c *Client) Do(method, path string, query url.Values, body, out any) error 
 	return nil
 }
 
+// DoRaw issues a GET /v1 request and returns the raw response body
+// unparsed -- for endpoints that return plain text/markdown or NDJSON
+// rather than a single JSON document (see note_export.go).
+func (c *Client) DoRaw(path string, query url.Values) ([]byte, error) {
+	u := c.BaseURL + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if c.Token == "" {
+		return nil, fmt.Errorf("not logged in -- run `quillink login` or set QUILLINK_TOKEN")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("User-Agent", "quillink-cli/"+Version)
+	req.Header.Set("X-Client-Version", "quillink-cli/"+Version)
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var problem ProblemDetail
+		apiErr := &APIError{Status: resp.StatusCode, RawBody: string(respBody)}
+		if json.Unmarshal(respBody, &problem) == nil && problem.Title != "" {
+			apiErr.Title = problem.Title
+			apiErr.Detail = problem.Detail
+		} else {
+			apiErr.Title = http.StatusText(resp.StatusCode)
+			apiErr.Detail = string(respBody)
+		}
+		return nil, apiErr
+	}
+	return respBody, nil
+}
+
 // DeviceCodeRequest/Response and OAuthTokenResponse are unauthenticated
 // endpoints (RFC 8628) called without a bearer token, so they bypass Do.
 func (c *Client) PostPublic(path string, body, out any) error {

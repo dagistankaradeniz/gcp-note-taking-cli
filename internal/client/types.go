@@ -104,6 +104,163 @@ type FolderListResponse struct {
 	Total   int      `json:"total"`
 }
 
+type FolderCreateRequest struct {
+	Name     string  `json:"name"`
+	ParentID *string `json:"parent_id,omitempty"`
+	Color    *string `json:"color,omitempty"`
+}
+
+type FolderUpdateRequest struct {
+	Name           *string `json:"name,omitempty"`
+	ParentID       *string `json:"parent_id,omitempty"`
+	Color          *string `json:"color,omitempty"`
+	Pinned         *bool   `json:"pinned,omitempty"`
+	ExcludedFromAI *bool   `json:"excluded_from_ai,omitempty"`
+}
+
+// Second Brain (Pro plan) -- backlinks/related/graph/stats. Mirrors the
+// matching response models in app/models/note.py.
+
+type NoteStatsResponse struct {
+	TotalNotes     int            `json:"total_notes"`
+	TotalSizeBytes int            `json:"total_size_bytes"`
+	PinnedNotes    int            `json:"pinned_notes"`
+	ByDay          map[string]int `json:"by_day"`
+}
+
+type NoteBacklinkResult struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+}
+
+type NoteBacklinksResponse struct {
+	Backlinks     []NoteBacklinkResult `json:"backlinks"`
+	ZKUnavailable bool                 `json:"zk_unavailable"`
+}
+
+type NoteRelatedResult struct {
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Type       string   `json:"type"`
+	Score      float64  `json:"score"`
+	SharedTags []string `json:"shared_tags"`
+}
+
+type NoteRelatedResponse struct {
+	Notes         []NoteRelatedResult `json:"notes"`
+	ZKUnavailable bool                `json:"zk_unavailable"`
+}
+
+type NoteGraphNode struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Locked    bool     `json:"locked"`
+	Type      string   `json:"type"`
+	Tags      []string `json:"tags"`
+	FolderID  *string  `json:"folder_id"`
+	UpdatedAt *string  `json:"updated_at"`
+}
+
+type NoteGraphEdge struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+type NoteGraphResponse struct {
+	Nodes         []NoteGraphNode `json:"nodes"`
+	Edges         []NoteGraphEdge `json:"edges"`
+	ZKUnavailable bool            `json:"zk_unavailable"`
+}
+
+type NoteGraphGlobalResponse struct {
+	Nodes         []NoteGraphNode `json:"nodes"`
+	Edges         []NoteGraphEdge `json:"edges"`
+	NextCursor    *string         `json:"next_cursor"`
+	ZKUnavailable bool            `json:"zk_unavailable"`
+}
+
+type GraphAnalysisNode struct {
+	ID          string  `json:"id"`
+	CommunityID int     `json:"community_id"`
+	Centrality  float64 `json:"centrality"`
+	Type        string  `json:"type"`
+}
+
+type GraphAnalysisResponse struct {
+	Nodes                  []GraphAnalysisNode `json:"nodes"`
+	CommunityAlgo          string              `json:"community_algo"`
+	CentralityAlgo         string              `json:"centrality_algo"`
+	CentralityApproximated bool                `json:"centrality_approximated"`
+	CommunityFallbackUsed  bool                `json:"community_fallback_used"`
+	ZKUnavailable          bool                `json:"zk_unavailable"`
+}
+
+// Attachments -- read-only in v1 (list/download only, see
+// app/routers/v1_attachments.py's module docstring for why there's no
+// upload here yet). Mirrors app/models/attachment.py.
+
+type Attachment struct {
+	ID               string  `json:"id"`
+	NoteID           string  `json:"note_id"`
+	OriginalFilename string  `json:"original_filename"`
+	MimeType         string  `json:"mime_type"`
+	SizeBytes        int     `json:"size_bytes"`
+	Status           string  `json:"status"`
+	UploadedAt       *string `json:"uploaded_at"`
+	CreatedAt        string  `json:"created_at"`
+	ZKEncrypted      bool    `json:"zk_encrypted"`
+	LockEncrypted    bool    `json:"lock_encrypted"`
+}
+
+type AttachmentListResponse struct {
+	Attachments []Attachment `json:"attachments"`
+}
+
+type AttachmentDownloadResponse struct {
+	DownloadURL string `json:"download_url"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+// Shared notes -- mirrors app/models/shared_note.py.
+
+type SharedNoteResponse struct {
+	ID            string         `json:"id"`
+	NoteID        string         `json:"note_id"`
+	Title         string         `json:"title"`
+	Body          map[string]any `json:"body"`
+	Tags          []string       `json:"tags"`
+	Locked        bool           `json:"locked"`
+	EditorMode    string         `json:"editor_mode"`
+	SizeBytes     int            `json:"size_bytes"`
+	SharedByEmail string         `json:"shared_by_email"`
+	SharedByName  *string        `json:"shared_by_name"`
+	SharedAt      string         `json:"shared_at"`
+	NoteCreatedAt string         `json:"note_created_at"`
+	NoteUpdatedAt string         `json:"note_updated_at"`
+}
+
+type SharedNoteListResponse struct {
+	Notes []SharedNoteResponse `json:"notes"`
+	Total int                  `json:"total"`
+}
+
+type SharedRecipient struct {
+	RecipientUID   string  `json:"recipient_uid"`
+	RecipientEmail string  `json:"recipient_email"`
+	RecipientName  *string `json:"recipient_name"`
+	SharedAt       string  `json:"shared_at"`
+	SharedID       string  `json:"shared_id"`
+	ShareMode      string  `json:"share_mode"`
+	ExpiresAt      *string `json:"expires_at"`
+	Viewed         *bool   `json:"viewed"`
+}
+
+type SharedRecipientListResponse struct {
+	Recipients []SharedRecipient `json:"recipients"`
+	Total      int               `json:"total"`
+}
+
 type StatusResponse struct {
 	Authenticated  bool     `json:"authenticated"`
 	Scopes         []string `json:"scopes"`
