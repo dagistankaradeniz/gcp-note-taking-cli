@@ -64,7 +64,7 @@ quillink note delete <id>     # Password: (interactive) -- refuses to delete wit
 export QUILLINK_API_BASE=http://localhost:8000   # local backend, no Firebase Hosting rewrite
 ```
 
-Defaults to `https://note-taking-app-prod.web.app`. Release binaries are built with the **prod** OAuth `client_id` baked in (see `.goreleaser.yaml`), so `quillink login` against a non-prod `--api-base` also needs a matching `--client-id` (or `QUILLINK_CLIENT_ID`) registered in that environment.
+Defaults to `https://note-taking-app-prod.web.app`. The API base must be `https://`; plain `http://` is accepted only for `localhost` / `127.0.0.1` (the CLI refuses to send a token, or receive one at login, in clear text). Release binaries are built with the **prod** OAuth `client_id` baked in (see `.goreleaser.yaml`), so `quillink login` against a non-prod `--api-base` also needs a matching `--client-id` (or `QUILLINK_CLIENT_ID`) registered in that environment.
 
 ### Workspaces (multiple environments/accounts)
 
@@ -126,6 +126,7 @@ internal/output/      --json envelope + table rendering, exit codes
 - [x] Shell completions (bash/zsh/fish/powershell) — Cobra generates these for free via `quillink completion <shell>`, no extra work needed.
 - [x] `brews:` block wired to [`dagistankaradeniz/homebrew-quillink`](https://github.com/dagistankaradeniz/homebrew-quillink) (`brew install dagistankaradeniz/quillink/quillink`).
 - [ ] Set `HOMEBREW_TAP_GITHUB_TOKEN` as a repo secret (cross-repo push access to the tap) — the default `GITHUB_TOKEN` can't push to a different repo. Blocks the first formula publish.
+- [x] Signed build provenance (GitHub artifact attestations, SLSA) for every release archive and `checksums.txt` — verify a download with `gh attestation verify <file> --repo dagistankaradeniz/gcp-note-taking-cli`.
 - [ ] `winget` manifest submission to `microsoft/winget-pkgs` — manual PR process, not automatable from CI.
 
 ## Local credential storage

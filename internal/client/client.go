@@ -38,6 +38,20 @@ func (e *APIError) Error() string {
 	return e.Title
 }
 
+// requireHTTPS refuses plain HTTP, except to this machine (local backend):
+// over HTTP the bearer token -- or, during login, the newly issued one --
+// would cross the network in clear text.
+func requireHTTPS(u *url.URL) error {
+	if u.Scheme == "https" {
+		return nil
+	}
+	host := u.Hostname()
+	if u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
+		return nil
+	}
+	return fmt.Errorf("refusing to connect to %s://%s: the API base must use https (http is only allowed for localhost)", u.Scheme, u.Host)
+}
+
 type Client struct {
 	BaseURL string
 	Token   string
@@ -57,6 +71,13 @@ func New(baseURL, token string) *Client {
 			// request tries to reuse it, surfacing as a bare EOF instead
 			// of a clean error. One connection per request avoids it.
 			Transport: &http.Transport{DisableKeepAlives: true},
+			// Never follow a redirect down to plain HTTP.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
+				return requireHTTPS(req.URL)
+			},
 		},
 	}
 }
@@ -82,6 +103,9 @@ func (c *Client) Do(method, path string, query url.Values, body, out any) error 
 	req, err := http.NewRequest(method, u, reqBody)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
+	}
+	if err := requireHTTPS(req.URL); err != nil {
+		return err
 	}
 	if c.Token == "" {
 		return fmt.Errorf("not logged in -- run `quillink login` or set QUILLINK_TOKEN")
@@ -142,6 +166,9 @@ func (c *Client) DoRaw(path string, query url.Values) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+	if err := requireHTTPS(req.URL); err != nil {
+		return nil, err
+	}
 	if c.Token == "" {
 		return nil, fmt.Errorf("not logged in -- run `quillink login` or set QUILLINK_TOKEN")
 	}
@@ -185,6 +212,9 @@ func (c *Client) PostPublic(path string, body, out any) error {
 	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
+	}
+	if err := requireHTTPS(req.URL); err != nil {
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "quillink-cli/"+Version)

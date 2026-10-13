@@ -7,6 +7,10 @@ on:
 
 permissions:
   contents: write
+  # Build provenance attestation (below): keyless signing via the workflow's
+  # OIDC identity, recorded in GitHub's attestation store.
+  id-token: write
+  attestations: write
 
 jobs:
   goreleaser:
@@ -39,3 +43,14 @@ jobs:
           # the default GITHUB_TOKEN above is scoped to this repo only.
           # See README "Distribution" for what this token can do.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # Signed SLSA build provenance for every release archive and the
+      # checksums file: proves an asset was built by this workflow from this
+      # repo at this tag. Verify with:
+      #   gh attestation verify quillink_darwin_arm64.tar.gz --repo dagistankaradeniz/gcp-note-taking-cli
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
