@@ -106,3 +106,12 @@ whenever asked to audit dependencies, with no need for the user to invoke it exp
   copyleft licenses). If that's missing when you're touching CI config, flag it to the
   user rather than assuming manual review is sufficient long-term.
 <!-- SHARED-LICENSE-POLICY:END -->
+
+## Clean builds & CI (always enforced, even if not asked)
+
+Green isn't enough: build and CI output must carry no warnings, deprecations or audit findings, even ones that don't break anything.
+
+- After every CI run you trigger or watch, read the run's annotations (`gh api repos/<owner>/<repo>/check-runs/<job-id>/annotations`) and grep its logs for `warn`, `deprecat` and `vulnerab`. Fix what you find in the same task.
+- Keep dependencies and GitHub Actions current. When something is deprecated, move to the first version that clears it, after reading that version's release notes for breaking changes. Apply the license policy in this file to every bump.
+- Fix the cause; never hide it. Don't raise thresholds, suppress or ignore findings, or silence logs to make output look clean. The one exception is a tool's own documented opt-out for a setting that is deliberate, with a comment saying why.
+- If something can't be fixed (no upstream fix exists, or the fix needs a risky change that can't be tested), say so in your report and give the reason.
