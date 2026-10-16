@@ -31,6 +31,10 @@ quillink note lock <id>                # password-protect a note (Plus plan+), p
 quillink note unlock <id>              # reveal a password-protected note, prompts for a masked password
 quillink note delete <id>              # prompts for the password first if the note is locked
 
+quillink tag list --counts             # every tag with its note/canvas counts
+quillink tag show work urgent          # notes carrying every one of these tags (--match any: at least one)
+quillink note list --tags work,urgent  # same filter on note list; note search takes --tags/--match too
+
 quillink org info                      # Team plan: your organization's plan/seats/status
 quillink org members                   # Team plan: your organization's members
 

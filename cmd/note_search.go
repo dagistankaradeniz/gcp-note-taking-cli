@@ -14,6 +14,8 @@ import (
 var (
 	noteSearchLimit            int
 	noteSearchIncludeSensitive bool
+	noteSearchTags             []string
+	noteSearchMatch            string
 )
 
 // GET /v1/notes/search is a real server-side endpoint (v1_notes.py),
@@ -30,6 +32,9 @@ var noteSearchCmd = &cobra.Command{
 		q := url.Values{}
 		q.Set("q", args[0])
 		q.Set("limit", strconv.Itoa(noteSearchLimit))
+		if err := addTagFilter(q, noteSearchTags, noteSearchMatch); err != nil {
+			return err
+		}
 		if err := c.Do("GET", "/v1/notes/search", q, nil, &resp); err != nil {
 			return err
 		}
@@ -48,6 +53,8 @@ var noteSearchCmd = &cobra.Command{
 
 func init() {
 	noteSearchCmd.Flags().IntVar(&noteSearchLimit, "limit", 50, "max matches to return")
+	noteSearchCmd.Flags().StringSliceVar(&noteSearchTags, "tags", nil, "only search notes with these tags (comma-separated; see --match)")
+	noteSearchCmd.Flags().StringVar(&noteSearchMatch, "match", "all", "with --tags -- all: every tag; any: at least one")
 	noteSearchCmd.Flags().BoolVar(&noteSearchIncludeSensitive, "include-sensitive", false, "include masked/sensitive fields unmasked")
 	noteCmd.AddCommand(noteSearchCmd)
 }

@@ -45,6 +45,13 @@ type NoteCreateRequest struct {
 	EditorMode string         `json:"editor_mode,omitempty"`
 }
 
+// TagCount mirrors app.models.note.TagCount (GET /v1/tags/counts).
+type TagCount struct {
+	Name     string `json:"name"`
+	Notes    int    `json:"notes"`
+	Canvases int    `json:"canvases"`
+}
+
 type NoteUpdateRequest struct {
 	Title          *string        `json:"title,omitempty"`
 	Body           map[string]any `json:"body,omitempty"`

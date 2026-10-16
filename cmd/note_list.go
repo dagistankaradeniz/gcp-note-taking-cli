@@ -16,6 +16,8 @@ var (
 	noteListLimit            int
 	noteListStartAfter       string
 	noteListIncludeSensitive bool
+	noteListTags             []string
+	noteListMatch            string
 )
 
 var noteListCmd = &cobra.Command{
@@ -29,6 +31,9 @@ var noteListCmd = &cobra.Command{
 		q.Set("limit", strconv.Itoa(noteListLimit))
 		if noteListStartAfter != "" {
 			q.Set("start_after", noteListStartAfter)
+		}
+		if err := addTagFilter(q, noteListTags, noteListMatch); err != nil {
+			return err
 		}
 
 		c := newClient()
@@ -51,7 +56,11 @@ var noteListCmd = &cobra.Command{
 		printNoteTable(resp.Notes)
 		if resp.HasMore && len(resp.Notes) > 0 {
 			last := resp.Notes[len(resp.Notes)-1]
-			fmt.Fprintf(os.Stderr, "\nMore notes available. Continue with:\n  quillink note list --start-after %s\n", last.ID)
+			hint := "quillink note list"
+			if len(noteListTags) > 0 {
+				hint += fmt.Sprintf(" --tags %s --match %s", joinTags(noteListTags), noteListMatch)
+			}
+			fmt.Fprintf(os.Stderr, "\nMore notes available. Continue with:\n  %s --start-after %s\n", hint, last.ID)
 		}
 		return nil
 	},
@@ -61,6 +70,8 @@ func init() {
 	noteListCmd.Flags().StringVar(&noteListFolderID, "folder", "", "filter by folder ID")
 	noteListCmd.Flags().IntVar(&noteListLimit, "limit", 50, "max notes to return")
 	noteListCmd.Flags().StringVar(&noteListStartAfter, "start-after", "", "resume listing after this note ID (see has_more/next page hint)")
+	noteListCmd.Flags().StringSliceVar(&noteListTags, "tags", nil, "only notes with these tags (comma-separated; see --match)")
+	noteListCmd.Flags().StringVar(&noteListMatch, "match", "all", "with --tags -- all: every tag; any: at least one")
 	noteListCmd.Flags().BoolVar(&noteListIncludeSensitive, "include-sensitive", false, "include masked/sensitive fields unmasked")
 	noteCmd.AddCommand(noteListCmd)
 }

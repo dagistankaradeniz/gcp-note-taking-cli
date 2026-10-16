@@ -13,6 +13,7 @@ var (
 	noteExportAll      bool
 	noteExportFolderID string
 	noteExportTags     []string
+	noteExportMatch    string
 	noteExportOut      string
 )
 
@@ -64,8 +65,8 @@ default -- redirect or use --out.`,
 			if noteExportFolderID != "" {
 				q.Set("folder_id", noteExportFolderID)
 			}
-			for _, t := range noteExportTags {
-				q.Add("tags", t)
+			if err := addTagFilter(q, noteExportTags, noteExportMatch); err != nil {
+				return err
 			}
 			data, err = c.DoRaw("/v1/notes/export", q)
 		} else {
@@ -87,7 +88,8 @@ func init() {
 	noteExportCmd.Flags().StringVar(&noteExportFormat, "format", "", "ndjson or markdown (--all only; default ndjson)")
 	noteExportCmd.Flags().BoolVar(&noteExportAll, "all", false, "export every active note instead of a single note")
 	noteExportCmd.Flags().StringVar(&noteExportFolderID, "folder", "", "--all only: limit to this folder ID")
-	noteExportCmd.Flags().StringSliceVar(&noteExportTags, "tags", nil, "--all only: limit to notes with any of these tags (comma-separated)")
+	noteExportCmd.Flags().StringSliceVar(&noteExportTags, "tags", nil, "--all only: limit to notes with these tags (comma-separated; see --match)")
+	noteExportCmd.Flags().StringVar(&noteExportMatch, "match", "any", "with --tags -- any: at least one tag; all: every tag")
 	noteExportCmd.Flags().StringVar(&noteExportOut, "out", "", "write to this file instead of stdout")
 	noteCmd.AddCommand(noteExportCmd)
 }
