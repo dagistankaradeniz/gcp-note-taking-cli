@@ -64,7 +64,7 @@ brews:
     install: |
       bin.install "quillink"
     test: |
-      system "#{bin}/quillink --version"
+      system "#{bin}/quillink", "--version"
 
 # The winget manifest still needs a one-time manual PR to
 # microsoft/winget-pkgs -- not automatable from this repo alone. See
