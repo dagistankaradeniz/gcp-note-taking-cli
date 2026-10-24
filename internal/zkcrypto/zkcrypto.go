@@ -30,6 +30,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -72,10 +73,36 @@ type EncryptedPayload struct {
 	Tag        string `json:"tag"`
 }
 
+// KDF floors (workspace ZK_HARDENING_PLAN.md S7), mirroring
+// recoveryCredential.ts's assertKdfFloor: the server supplies the cost
+// parameters, so a malicious one could otherwise ask for a trivially cheap
+// derivation. PBKDF2 at least 600,000 iterations with a 16-byte salt;
+// Argon2id at least libsodium's INTERACTIVE ops and memory.
+const (
+	minPbkdf2Iterations = 600_000
+	minPbkdf2SaltBytes  = 16
+	minArgon2Ops        = 2
+	minArgon2MemoryKiB  = 65536
+)
+
+// ErrWeakKdfParams is returned when the server's KDF settings are below
+// the floor -- refused rather than derived weakly.
+var ErrWeakKdfParams = errors.New("the account's key-derivation settings are weaker than allowed")
+
 func deriveIntermediateBits(passphrase string, params KdfParams) ([]byte, error) {
 	salt, err := base64.StdEncoding.DecodeString(params.Salt)
 	if err != nil {
 		return nil, fmt.Errorf("decode salt: %w", err)
+	}
+	switch params.Algorithm {
+	case "pbkdf2":
+		if params.Iterations < minPbkdf2Iterations || len(salt) < minPbkdf2SaltBytes {
+			return nil, ErrWeakKdfParams
+		}
+	case "argon2id":
+		if params.Ops < minArgon2Ops || params.MemoryKiB < minArgon2MemoryKiB {
+			return nil, ErrWeakKdfParams
+		}
 	}
 	switch params.Algorithm {
 	case "pbkdf2":

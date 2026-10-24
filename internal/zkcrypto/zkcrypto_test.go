@@ -3,6 +3,7 @@ package zkcrypto
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,8 @@ func formatSecretKeyForTest(raw []byte) (string, error) {
 // wasn't changed independently -- see Verification in the approved plan
 // for the follow-up: cross-check directly against the ZK test account
 // (LOCAL_ZK_TEST_* in local-test-user.env) via the real browser.
+// Regenerated 2026-10-24 at the KDF floor (600,000 iterations), which
+// DeriveKek now enforces.
 func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	secretKeyRaw, err := base64.StdEncoding.DecodeString("AwoRGB8mLTQ7QklQV15lbA==")
 	if err != nil {
@@ -45,7 +48,7 @@ func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	params := KdfParams{
 		Algorithm:  "pbkdf2",
 		Salt:       "34w4eauhLAJCx0qXhz0yrrWISQc5nzqaMM7hJigVYN8=",
-		Iterations: 100_000,
+		Iterations: 600_000,
 	}
 	passphrase := "correct horse battery staple zebra"
 
@@ -53,7 +56,7 @@ func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantKek := "cpaS5I+ClEMHpWNBA1D9ptSrDvABLI7BCQWzUNJx6qE="
+	wantKek := "6NQDt1P5yLMt+1579PWeoNJ6xd2UH88J5+ZDERgctBg="
 	if got := base64.StdEncoding.EncodeToString(kek); got != wantKek {
 		t.Errorf("KEK mismatch:\n got  %s\n want %s", got, wantKek)
 	}
@@ -62,7 +65,7 @@ func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantVerifier := "84NvXW4TnQu5VgxVSS8CTkbrzMIS7sGzhlfcntZLdaI="
+	wantVerifier := "xY8eem8gx6VAxKZpzUI34kN0AdTFzT2CXfDoPsAW1zs="
 	if verifier != wantVerifier {
 		t.Errorf("verifier hash mismatch:\n got  %s\n want %s", verifier, wantVerifier)
 	}
@@ -71,7 +74,7 @@ func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	// under this exact KEK -- confirms AES-GCM decrypt (ciphertext/tag
 	// split, IV handling) is also byte-compatible, not just the KDF/HKDF
 	// chain above.
-	titleEnvelope := `{"ciphertext":"KuPUQXjW0xi3e0GXgXN+aU9RN9RQ+R/U","iv":"6szJ9ctH3QCCQLuO","tag":"wp5ZwyNW6VHGilIDIRE3PA=="}`
+	titleEnvelope := `{"ciphertext":"Rp/aXVRvXSvAYq1K98uszzDwdiQC5H1v","iv":"DEtekHoErYIoiGWn","tag":"/NjsJB9xq0j1pnWcAGhEhg=="}`
 	title, err := DecryptString(kek, titleEnvelope)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +125,10 @@ func TestParseRecoverySecretKey_RoundTrip(t *testing.T) {
 // crypto_pwhash(ALG_ARGON2ID13) agree byte-for-byte given identical
 // params (opsLimit=time, memLimitKib=memory, threads=1) -- the one thing
 // that was previously unverified (see git history/PR description for the
-// throwaway script used to generate this).
+// throwaway script used to generate this). Regenerated 2026-10-24 at the
+// KDF floor (libsodium INTERACTIVE: ops 2, 64 MiB) with the same
+// libsodium-wrappers-sumo build run under Node, since DeriveKek now refuses
+// anything cheaper.
 func TestDeriveKek_Argon2id_MatchesLibsodiumVector(t *testing.T) {
 	secretKeyRaw, err := base64.StdEncoding.DecodeString("AwoRGB8mLTQ7QklQV15lbA==")
 	if err != nil {
@@ -131,8 +137,8 @@ func TestDeriveKek_Argon2id_MatchesLibsodiumVector(t *testing.T) {
 	params := KdfParams{
 		Algorithm: "argon2id",
 		Salt:      "8sTligLmjGbZVmgSCqt/rQ==",
-		Ops:       1,
-		MemoryKiB: 8,
+		Ops:       2,
+		MemoryKiB: 65536,
 	}
 	passphrase := "correct horse battery staple zebra"
 
@@ -140,7 +146,7 @@ func TestDeriveKek_Argon2id_MatchesLibsodiumVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantKek := "4IT7RuAZpBWJ+UhaNd7GRUia1LNMVGXcRZXLR8nsjFQ="
+	wantKek := "CmN/AxNKzDzWTvTZ6KsWSqXVzmW0P0OY0+oJBApv1Gc="
 	if got := base64.StdEncoding.EncodeToString(kek); got != wantKek {
 		t.Errorf("KEK mismatch:\n got  %s\n want %s", got, wantKek)
 	}
@@ -149,17 +155,34 @@ func TestDeriveKek_Argon2id_MatchesLibsodiumVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantVerifier := "KAAclQRfcS7Dq9xUBusFFhIjRGdSRCKfxfvuAjxmsVM="
+	wantVerifier := "PcAqDm8gKAwyHpD07n98BwhnqmqcCu1/mbU9pWyLB6k="
 	if verifier != wantVerifier {
 		t.Errorf("verifier hash mismatch:\n got  %s\n want %s", verifier, wantVerifier)
 	}
 
-	titleEnvelope := `{"ciphertext":"y40Q4ACy/uGHbX/tzaR/5Jh4B1Rj1yK5","iv":"ly2Ww7LUXWvZIoa6","tag":"PzpvDxGDUw+/9IPt+k3wuA=="}`
+	titleEnvelope := `{"ciphertext":"SeF2yw5aFCUy1Pc9PJVA7VaQF/NQxBJ2","iv":"mfnaCTVKiBtTDWzh","tag":"TxmJfUMSuUbEF4wM287ViQ=="}`
 	title, err := DecryptString(kek, titleEnvelope)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "Zero-Knowledge test note"; title != want {
 		t.Errorf("decrypted title = %q, want %q", title, want)
+	}
+}
+
+// A server can't ask for a cheaper derivation than the floor (workspace
+// ZK_HARDENING_PLAN.md S7).
+func TestDeriveKek_RefusesWeakKdfParams(t *testing.T) {
+	secretKeyRaw := make([]byte, 16)
+	salt16 := base64.StdEncoding.EncodeToString(make([]byte, 16))
+	for name, params := range map[string]KdfParams{
+		"pbkdf2 iterations": {Algorithm: "pbkdf2", Salt: salt16, Iterations: 599_999},
+		"pbkdf2 short salt": {Algorithm: "pbkdf2", Salt: base64.StdEncoding.EncodeToString(make([]byte, 8)), Iterations: 600_000},
+		"argon2id ops":      {Algorithm: "argon2id", Salt: salt16, Ops: 1, MemoryKiB: 65536},
+		"argon2id memory":   {Algorithm: "argon2id", Salt: salt16, Ops: 2, MemoryKiB: 65535},
+	} {
+		if _, err := DeriveKek("passphrase", secretKeyRaw, params); !errors.Is(err, ErrWeakKdfParams) {
+			t.Errorf("%s: err = %v, want ErrWeakKdfParams", name, err)
+		}
 	}
 }

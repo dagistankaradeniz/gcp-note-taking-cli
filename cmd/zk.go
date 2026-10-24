@@ -167,18 +167,27 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 // -- a no-op otherwise. A locked (per-item password) or Vault note is
 // opaque under a DIFFERENT key entirely (see zkFieldCrypto.ts's identical
 // exclusion) and is left untouched. Title/body decrypt together, all-or-
-// nothing: a note created before this account went ZK (or a race with an
-// in-flight migration) may still be plaintext, so a decrypt failure
-// leaves the note exactly as fetched rather than showing a half-decrypted
-// result. Tags decrypt independently per-tag (see DecryptTags).
+// nothing, and fail closed (workspace ZK_HARDENING_PLAN.md S4): a note
+// that doesn't decrypt shows zkUnreadableText and an empty body, never the
+// server's text -- a malicious server could otherwise plant content that
+// reads as the user's own. Tags decrypt independently per-tag (see
+// DecryptTags).
 func decryptNoteZK(dek []byte, n *client.Note) {
 	if dek == nil || n.NoteEncrypted || n.VaultEncrypted {
 		return
+	}
+	unreadable := func() {
+		n.Title = zkUnreadableText
+		if n.Body != nil {
+			n.Body = map[string]any{"type": "doc", "content": []any{map[string]any{"type": "paragraph"}}}
+		}
+		n.Tags = []string{}
 	}
 	title := n.Title
 	if n.Title != "" {
 		decrypted, err := zkcrypto.DecryptString(dek, n.Title)
 		if err != nil {
+			unreadable()
 			return
 		}
 		title = decrypted
@@ -187,6 +196,7 @@ func decryptNoteZK(dek []byte, n *client.Note) {
 	if n.Body != nil {
 		decrypted, err := zkcrypto.DecryptBody(dek, n.Body)
 		if err != nil {
+			unreadable()
 			return
 		}
 		body = decrypted
@@ -195,6 +205,10 @@ func decryptNoteZK(dek []byte, n *client.Note) {
 	n.Body = body
 	n.Tags = zkcrypto.DecryptTags(dek, n.Tags)
 }
+
+// zkUnreadableText replaces a Zero-Knowledge field that doesn't decrypt --
+// the same words the web and mobile apps show.
+const zkUnreadableText = "Can't decrypt this item"
 
 // decryptFolderZK is decryptNoteZK's twin for a folder's name.
 func decryptFolderZK(dek []byte, f *client.Folder) {
@@ -206,5 +220,7 @@ func decryptFolderZK(dek []byte, f *client.Folder) {
 	}
 	if decrypted, err := zkcrypto.DecryptString(dek, f.Name); err == nil {
 		f.Name = decrypted
+	} else {
+		f.Name = zkUnreadableText
 	}
 }
