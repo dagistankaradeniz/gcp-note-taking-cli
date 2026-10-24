@@ -30,27 +30,42 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&zkSecretKeyStdin, "zk-secret-key-stdin", false, "read the Zero-Knowledge Recovery Secret Key from stdin instead of prompting")
 }
 
+// stdinReader is shared, so --zk-passphrase-stdin and --zk-secret-key-stdin
+// together read one line each: a reader per call could buffer past its line
+// and swallow the next.
+var stdinReader = bufio.NewReader(os.Stdin)
+
 func readStdinLine() (string, error) {
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+	line, err := stdinReader.ReadString('\n')
 	if err != nil && line == "" {
 		return "", err
 	}
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// resolveZkPassphrase follows the same safe-input rules as
-// note_unlock.go's resolvePassword -- never a literal flag value.
+// The Recovery Credential is never read from the environment (workspace
+// ZK_HARDENING_PLAN.md S10): env vars leak through shell history, CI logs
+// and process listings, and this credential unlocks everything. A script
+// that still sets one gets told how to switch instead of a silent prompt.
+func refuseZkEnv(name, flag string) error {
+	if os.Getenv(name) == "" {
+		return nil
+	}
+	return fmt.Errorf("%s is no longer read -- pipe the value in with %s instead", name, flag)
+}
+
+// resolveZkPassphrase: an interactive masked prompt, or --zk-passphrase-stdin
+// -- never a literal flag value or an env var.
 func resolveZkPassphrase() (string, error) {
+	if err := refuseZkEnv("QUILLINK_ZK_PASSPHRASE", "--zk-passphrase-stdin"); err != nil {
+		return "", err
+	}
 	if zkPassphraseStdin {
 		line, err := readStdinLine()
 		if err != nil {
 			return "", fmt.Errorf("read Recovery Passphrase from stdin: %w", err)
 		}
 		return line, nil
-	}
-	if env := os.Getenv("QUILLINK_ZK_PASSPHRASE"); env != "" {
-		return env, nil
 	}
 	if isTerminalStdin() {
 		fmt.Fprint(os.Stderr, "Zero-Knowledge Recovery Passphrase: ")
@@ -61,12 +76,15 @@ func resolveZkPassphrase() (string, error) {
 		}
 		return string(pw), nil
 	}
-	return "", fmt.Errorf("no Recovery Passphrase provided -- use an interactive terminal, --zk-passphrase-stdin, or QUILLINK_ZK_PASSPHRASE")
+	return "", fmt.Errorf("no Recovery Passphrase provided -- use an interactive terminal or --zk-passphrase-stdin")
 }
 
 // resolveZkSecretKey mirrors resolveZkPassphrase, then parses/checksum-
 // verifies the formatted Secret Key via zkcrypto.ParseRecoverySecretKey.
 func resolveZkSecretKey() ([]byte, error) {
+	if err := refuseZkEnv("QUILLINK_ZK_SECRET_KEY", "--zk-secret-key-stdin"); err != nil {
+		return nil, err
+	}
 	var formatted string
 	var err error
 	switch {
@@ -75,8 +93,6 @@ func resolveZkSecretKey() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read Recovery Secret Key from stdin: %w", err)
 		}
-	case os.Getenv("QUILLINK_ZK_SECRET_KEY") != "":
-		formatted = os.Getenv("QUILLINK_ZK_SECRET_KEY")
 	case isTerminalStdin():
 		fmt.Fprint(os.Stderr, "Zero-Knowledge Recovery Secret Key: ")
 		key, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -86,7 +102,7 @@ func resolveZkSecretKey() ([]byte, error) {
 		}
 		formatted = string(key)
 	default:
-		return nil, fmt.Errorf("no Recovery Secret Key provided -- use an interactive terminal, --zk-secret-key-stdin, or QUILLINK_ZK_SECRET_KEY")
+		return nil, fmt.Errorf("no Recovery Secret Key provided -- use an interactive terminal or --zk-secret-key-stdin")
 	}
 	return zkcrypto.ParseRecoverySecretKey(formatted)
 }
