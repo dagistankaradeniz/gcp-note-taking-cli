@@ -199,9 +199,10 @@ func decryptNoteZK(dek []byte, n *client.Note) {
 		}
 		n.Tags = []string{}
 	}
+	open := zkcrypto.NewOpener(dek, "note")
 	title := n.Title
 	if n.Title != "" {
-		decrypted, err := zkcrypto.DecryptString(dek, n.Title)
+		decrypted, err := open.String("title", n.Title)
 		if err != nil {
 			unreadable()
 			return
@@ -210,7 +211,7 @@ func decryptNoteZK(dek []byte, n *client.Note) {
 	}
 	var body map[string]any
 	if n.Body != nil {
-		decrypted, err := zkcrypto.DecryptBody(dek, n.Body)
+		decrypted, err := open.Body("body", n.Body)
 		if err != nil {
 			unreadable()
 			return
@@ -219,7 +220,7 @@ func decryptNoteZK(dek []byte, n *client.Note) {
 	}
 	n.Title = title
 	n.Body = body
-	n.Tags = zkcrypto.DecryptTags(dek, n.Tags)
+	n.Tags = open.Tags("tags", n.Tags)
 }
 
 // zkUnreadableText replaces a Zero-Knowledge field that doesn't decrypt --
@@ -234,7 +235,7 @@ func decryptFolderZK(dek []byte, f *client.Folder) {
 	if f.Name == "" {
 		return
 	}
-	if decrypted, err := zkcrypto.DecryptString(dek, f.Name); err == nil {
+	if decrypted, err := zkcrypto.NewOpener(dek, "folder").String("name", f.Name); err == nil {
 		f.Name = decrypted
 	} else {
 		f.Name = zkUnreadableText

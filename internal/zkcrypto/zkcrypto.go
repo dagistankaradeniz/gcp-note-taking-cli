@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -62,15 +63,26 @@ var (
 	verifierInfo = []byte("quillink-zk-account-verifier-v1")
 )
 
-// EncryptedPayload is the exact JSON shape encryptString/encryptJson
-// produce and decryptString/decryptJson consume in accountCrypto.ts --
-// identical wire format to notecrypto.go's EncryptedPayload (same
-// {ciphertext,iv,tag}, base64, AES-GCM-with-appended-tag shape), kept as
-// its own type here so this package has no dependency on notecrypto.
+// EncryptedPayload is envelope v2 (workspace ZK_HARDENING_PLAN.md S5), the
+// shape sealString/sealJson produce in accountCrypto.ts: {"v":2,"b":<binding
+// id>,ciphertext,iv,tag}, AES-GCM with AAD = "quillink-zk-v2" \0 item type
+// \0 field \0 b. `b` is one random id shared by all of an item's fields, so
+// the server can't move a field to another item, into another field or
+// across item types. v1 ({ciphertext,iv,tag} only) is refused. Keep the AAD
+// byte-identical with accountCrypto.ts / AccountCrypto.kt /
+// AccountCrypto.swift.
 type EncryptedPayload struct {
+	V          int    `json:"v"`
+	B          string `json:"b"`
 	Ciphertext string `json:"ciphertext"`
 	IV         string `json:"iv"`
 	Tag        string `json:"tag"`
+}
+
+var bindPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+
+func aad(itemType, field, bind string) []byte {
+	return []byte("quillink-zk-v2\x00" + itemType + "\x00" + field + "\x00" + bind)
 }
 
 // KDF floors (workspace ZK_HARDENING_PLAN.md S7), mirroring
@@ -179,11 +191,10 @@ func decryptRaw(key []byte, ciphertextB64, ivB64 string) ([]byte, error) {
 	return gcm.Open(nil, iv, ciphertext, nil)
 }
 
-// decryptEnvelope is decrypt's Go-side twin of accountCrypto.ts's
-// decrypt() (via vaultCrypto.ts) -- ciphertext/tag are stored separately
-// in the envelope but AES-GCM.Open wants them concatenated (Web Crypto's
-// default AES-GCM output shape too, same as notecrypto.go's decrypt).
-func decryptEnvelope(dek []byte, payload EncryptedPayload) ([]byte, error) {
+// decryptEnvelope opens one v2 envelope -- ciphertext/tag are stored
+// separately but AES-GCM.Open wants them concatenated (Web Crypto's default
+// AES-GCM output shape too, same as notecrypto.go's decrypt).
+func decryptEnvelope(dek []byte, payload EncryptedPayload, additional []byte) ([]byte, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(payload.Ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("decode ciphertext: %w", err)
@@ -205,45 +216,61 @@ func decryptEnvelope(dek []byte, payload EncryptedPayload) ([]byte, error) {
 		return nil, err
 	}
 	sealed := append(append([]byte{}, ciphertext...), tag...)
-	return gcm.Open(nil, iv, sealed, nil)
+	return gcm.Open(nil, iv, sealed, additional)
 }
 
-// DecryptString matches accountCrypto.ts's decryptString -- encrypted is
-// a JSON-stringified EncryptedPayload (the wire shape of a ZK note's
-// title, and of each individual ZK-encrypted tag).
-func DecryptString(dek []byte, encrypted string) (string, error) {
+// Opener reads one item's fields, requiring a single binding id across all
+// of them -- accountCrypto.ts's ZkItemOpener. Every method fails on a v1 or
+// malformed envelope, another item's or field's ciphertext, or damaged
+// bytes.
+type Opener struct {
+	dek      []byte
+	itemType string
+	bind     string
+}
+
+// NewOpener starts reading one item of itemType ("note", "folder", ...).
+func NewOpener(dek []byte, itemType string) *Opener {
+	return &Opener{dek: dek, itemType: itemType}
+}
+
+// String opens field, a JSON-stringified envelope (a title, a tag, a name).
+func (o *Opener) String(field, encrypted string) (string, error) {
 	var payload EncryptedPayload
 	if err := json.Unmarshal([]byte(encrypted), &payload); err != nil {
 		return "", fmt.Errorf("parse encrypted payload: %w", err)
 	}
-	plaintext, err := decryptEnvelope(dek, payload)
+	if payload.V != 2 || !bindPattern.MatchString(payload.B) {
+		return "", fmt.Errorf("not a v2 envelope")
+	}
+	if o.bind != "" && o.bind != payload.B {
+		return "", fmt.Errorf("envelope belongs to another item")
+	}
+	plaintext, err := decryptEnvelope(o.dek, payload, aad(o.itemType, field, payload.B))
 	if err != nil {
 		return "", fmt.Errorf("decrypt: %w", err)
 	}
+	o.bind = payload.B
 	return string(plaintext), nil
 }
 
-// DecryptTags matches accountCrypto.ts's decryptTags: each tag decrypts
-// independently, and one that fails (e.g. leftover plaintext from before
-// this account was ZK) is dropped rather than failing the whole list.
-func DecryptTags(dek []byte, encrypted []string) []string {
+// Tags opens each tag on its own; one that fails is dropped -- the server
+// can hide a tag, but can't add one.
+func (o *Opener) Tags(field string, encrypted []string) []string {
 	tags := make([]string, 0, len(encrypted))
 	for _, enc := range encrypted {
-		if plain, err := DecryptString(dek, enc); err == nil {
+		if plain, err := o.String(field, enc); err == nil {
 			tags = append(tags, plain)
 		}
 	}
 	return tags
 }
 
-// DecryptBody matches accountCrypto.ts's decryptJson as used by
-// decryptNoteRead: body arrives as the EncryptedPayload object itself
-// (not a JSON string like title/tags -- see zkFieldCrypto.ts's
-// encryptNoteWrite, which JSON.parses encryptJson's string output before
-// assigning it to the body field), so it's re-marshaled to a JSON string
-// here before going through the same envelope-decrypt path, then parsed
-// as the Tiptap body it decrypts to.
-func DecryptBody(dek []byte, body map[string]any) (map[string]any, error) {
+// Body opens a note body: it arrives as the envelope object itself (not a
+// JSON string like title/tags -- see zkFieldCrypto.ts's encryptNoteWrite),
+// so it's re-marshaled to a JSON string first, then parsed as the Tiptap
+// body it decrypts to.
+func (o *Opener) Body(field string, body map[string]any) (map[string]any, error) {
 	if body == nil {
 		return nil, nil
 	}
@@ -251,7 +278,7 @@ func DecryptBody(dek []byte, body map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("re-marshal envelope: %w", err)
 	}
-	plaintext, err := DecryptString(dek, string(raw))
+	plaintext, err := o.String(field, string(raw))
 	if err != nil {
 		return nil, err
 	}

@@ -19,6 +19,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -56,9 +57,17 @@ func GenerateSalt() (string, error) {
 	return base64.StdEncoding.EncodeToString(salt), nil
 }
 
+// ErrWeakIterations: fewer PBKDF2 iterations than locks are created with.
+// A server-sent lower count would make the password cheap to guess, so it's
+// refused -- vaultCrypto.ts's WeakIterationsError.
+var ErrWeakIterations = errors.New("the key-derivation settings are weaker than allowed")
+
 // DeriveKey derives the 256-bit AES-GCM key from a password + salt,
 // matching vaultCrypto.ts's deriveKey exactly (PBKDF2-HMAC-SHA256).
 func DeriveKey(password, saltB64 string, iterations int) ([]byte, error) {
+	if iterations < DefaultIterations {
+		return nil, ErrWeakIterations
+	}
 	salt, err := base64.StdEncoding.DecodeString(saltB64)
 	if err != nil {
 		return nil, fmt.Errorf("decode salt: %w", err)
@@ -70,6 +79,9 @@ func DeriveKey(password, saltB64 string, iterations int) ([]byte, error) {
 // vaultCrypto.ts's deriveVerifierHash exactly: a second, independent
 // PBKDF2 derivation over salt+verifierLabel.
 func DeriveVerifierHash(password, saltB64 string, iterations int) (string, error) {
+	if iterations < DefaultIterations {
+		return "", ErrWeakIterations
+	}
 	salt, err := base64.StdEncoding.DecodeString(saltB64)
 	if err != nil {
 		return "", fmt.Errorf("decode salt: %w", err)

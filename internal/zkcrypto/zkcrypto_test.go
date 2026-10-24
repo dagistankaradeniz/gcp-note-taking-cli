@@ -3,6 +3,7 @@ package zkcrypto
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -75,7 +76,7 @@ func TestDeriveKek_PBKDF2_MatchesWebCryptoVector(t *testing.T) {
 	// split, IV handling) is also byte-compatible, not just the KDF/HKDF
 	// chain above.
 	titleEnvelope := `{"ciphertext":"Rp/aXVRvXSvAYq1K98uszzDwdiQC5H1v","iv":"DEtekHoErYIoiGWn","tag":"/NjsJB9xq0j1pnWcAGhEhg=="}`
-	title, err := DecryptString(kek, titleEnvelope)
+	title, err := openV1ForTest(kek, titleEnvelope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +162,7 @@ func TestDeriveKek_Argon2id_MatchesLibsodiumVector(t *testing.T) {
 	}
 
 	titleEnvelope := `{"ciphertext":"SeF2yw5aFCUy1Pc9PJVA7VaQF/NQxBJ2","iv":"mfnaCTVKiBtTDWzh","tag":"TxmJfUMSuUbEF4wM287ViQ=="}`
-	title, err := DecryptString(kek, titleEnvelope)
+	title, err := openV1ForTest(kek, titleEnvelope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,5 +185,63 @@ func TestDeriveKek_RefusesWeakKdfParams(t *testing.T) {
 		if _, err := DeriveKek("passphrase", secretKeyRaw, params); !errors.Is(err, ErrWeakKdfParams) {
 			t.Errorf("%s: err = %v, want ErrWeakKdfParams", name, err)
 		}
+	}
+}
+
+// openV1ForTest opens a v1 ({ciphertext,iv,tag}, no AAD) envelope. The KEK
+// vectors above were made that way; it checks the derived key, not the
+// field format, which content no longer accepts.
+func openV1ForTest(key []byte, encrypted string) (string, error) {
+	var payload EncryptedPayload
+	if err := json.Unmarshal([]byte(encrypted), &payload); err != nil {
+		return "", err
+	}
+	plain, err := decryptEnvelope(key, payload, nil)
+	return string(plain), err
+}
+
+// The cross-client envelope v2 vector, the same one zkHardening.test.ts
+// opens: key = 32 bytes of 0x07, a note title.
+const v2Vector = `{"v":2,"b":"AAECAwQFBgcICQoLDA0ODw","ciphertext":"4Rma8UehjEOSUmd68sKDNLGWJRDcJEaC","iv":"AQIDBAUGBwgJCgsM","tag":"Di9/hS0etwGjQo4NwdFzLg=="}`
+
+func vectorKey() []byte {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = 7
+	}
+	return key
+}
+
+func TestOpener_OpensV2Vector(t *testing.T) {
+	got, err := NewOpener(vectorKey(), "note").String("title", v2Vector)
+	if err != nil {
+		t.Fatalf("String: %v", err)
+	}
+	if got != "Zero-Knowledge test note" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestOpener_RefusesOtherFieldTypeOrItem(t *testing.T) {
+	if _, err := NewOpener(vectorKey(), "note").String("body", v2Vector); err == nil {
+		t.Error("opened a title as a body")
+	}
+	if _, err := NewOpener(vectorKey(), "folder").String("title", v2Vector); err == nil {
+		t.Error("opened a note field as a folder's")
+	}
+	open := NewOpener(vectorKey(), "note")
+	if _, err := open.String("title", v2Vector); err != nil {
+		t.Fatalf("String: %v", err)
+	}
+	other := strings.Replace(v2Vector, "AAECAwQFBgcICQoLDA0ODw", "AAECAwQFBgcICQoLDA0OEA", 1)
+	if _, err := open.String("title", other); err == nil {
+		t.Error("accepted a field carrying another item's binding id")
+	}
+}
+
+func TestOpener_RefusesV1(t *testing.T) {
+	v1 := `{"ciphertext":"4Rma8UehjEOSUmd68sKDNLGWJRDcJEaC","iv":"AQIDBAUGBwgJCgsM","tag":"Di9/hS0etwGjQo4NwdFzLg=="}`
+	if _, err := NewOpener(vectorKey(), "note").String("title", v1); err == nil {
+		t.Error("opened a v1 envelope")
 	}
 }
