@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/bits"
 	"regexp"
 	"strings"
 
@@ -191,6 +192,32 @@ func decryptRaw(key []byte, ciphertextB64, ivB64 string) ([]byte, error) {
 	return gcm.Open(nil, iv, ciphertext, nil)
 }
 
+// Length padding (workspace ZK_HARDENING_PLAN.md P1): every v2 plaintext
+// is 0x80 then zeros up to a Padmé bucket of at least 64 bytes, so its size
+// shows only roughly how long the content is. Mirrors accountCrypto.ts's
+// paddedLength -- keep the arithmetic identical.
+const padMinBytes = 64
+
+// PaddedLength is the padded size for length content bytes (marker
+// included).
+func PaddedLength(length int) int {
+	n := max(length+1, padMinBytes)
+	e := bits.Len(uint(n)) - 1
+	step := 1 << (e - bits.Len(uint(e)))
+	return (n + step - 1) / step * step
+}
+
+func unpad(plain []byte) ([]byte, error) {
+	i := len(plain) - 1
+	for i >= 0 && plain[i] == 0 {
+		i--
+	}
+	if i < 0 || plain[i] != 0x80 {
+		return nil, fmt.Errorf("padding missing")
+	}
+	return plain[:i], nil
+}
+
 // decryptEnvelope opens one v2 envelope -- ciphertext/tag are stored
 // separately but AES-GCM.Open wants them concatenated (Web Crypto's default
 // AES-GCM output shape too, same as notecrypto.go's decrypt).
@@ -250,8 +277,12 @@ func (o *Opener) String(field, encrypted string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decrypt: %w", err)
 	}
+	content, err := unpad(plaintext)
+	if err != nil {
+		return "", err
+	}
 	o.bind = payload.B
-	return string(plaintext), nil
+	return string(content), nil
 }
 
 // Tags opens each tag on its own; one that fails is dropped -- the server

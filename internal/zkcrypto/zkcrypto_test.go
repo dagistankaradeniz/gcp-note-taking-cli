@@ -202,7 +202,7 @@ func openV1ForTest(key []byte, encrypted string) (string, error) {
 
 // The cross-client envelope v2 vector, the same one zkHardening.test.ts
 // opens: key = 32 bytes of 0x07, a note title.
-const v2Vector = `{"v":2,"b":"AAECAwQFBgcICQoLDA0ODw","ciphertext":"4Rma8UehjEOSUmd68sKDNLGWJRDcJEaC","iv":"AQIDBAUGBwgJCgsM","tag":"Di9/hS0etwGjQo4NwdFzLg=="}`
+const v2Vector = `{"v":2,"b":"AAECAwQFBgcICQoLDA0ODw","ciphertext":"4Rma8UehjEOSUmd68sKDNLGWJRDcJEaC/qGMn6xYRh4+DDRYBwfLVXm0SJ56WUcm0DtiyrNkoBzcr/BMi+iUMQ==","iv":"AQIDBAUGBwgJCgsM","tag":"wfNPcVpVy8KTwKqQM1CeTw=="}`
 
 func vectorKey() []byte {
 	key := make([]byte, 32)
@@ -243,5 +243,15 @@ func TestOpener_RefusesV1(t *testing.T) {
 	v1 := `{"ciphertext":"4Rma8UehjEOSUmd68sKDNLGWJRDcJEaC","iv":"AQIDBAUGBwgJCgsM","tag":"Di9/hS0etwGjQo4NwdFzLg=="}`
 	if _, err := NewOpener(vectorKey(), "note").String("title", v1); err == nil {
 		t.Error("opened a v1 envelope")
+	}
+}
+
+// Same table as zkHardening.test.ts.
+func TestPaddedLength_PadmeBuckets(t *testing.T) {
+	cases := [][2]int{{0, 64}, {63, 64}, {64, 72}, {100, 104}, {1000, 1024}, {5000, 5120}, {1_000_000, 1_015_808}}
+	for _, c := range cases {
+		if got := PaddedLength(c[0]); got != c[1] {
+			t.Errorf("PaddedLength(%d) = %d, want %d", c[0], got, c[1])
+		}
 	}
 }
