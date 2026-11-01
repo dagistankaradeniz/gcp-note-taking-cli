@@ -128,8 +128,8 @@ internal/output/      --json envelope + table rendering, exit codes
 - [x] Set `QUILLINK_CLI_OAUTH_CLIENT_ID` as a repo secret.
 - [x] Cut real release tags (`v0.1.0`, `v0.1.1`) — binaries live on [GitHub Releases](https://github.com/dagistankaradeniz/gcp-note-taking-cli/releases).
 - [x] Shell completions (bash/zsh/fish/powershell) — Cobra generates these for free via `quillink completion <shell>`, no extra work needed.
-- [x] `brews:` block wired to [`dagistankaradeniz/homebrew-quillink`](https://github.com/dagistankaradeniz/homebrew-quillink) (`brew install dagistankaradeniz/quillink/quillink`).
-- [ ] Set `HOMEBREW_TAP_GITHUB_TOKEN` as a repo secret (cross-repo push access to the tap) — the default `GITHUB_TOKEN` can't push to a different repo. Blocks the first formula publish.
+- [x] `homebrew_casks:` block wired to [`dagistankaradeniz/homebrew-quillink`](https://github.com/dagistankaradeniz/homebrew-quillink) (`brew install --cask dagistankaradeniz/quillink/quillink`).
+- [ ] Set `HOMEBREW_TAP_GITHUB_TOKEN` as a repo secret (cross-repo push access to the tap) — the default `GITHUB_TOKEN` can't push to a different repo. Blocks the first cask publish.
 - [x] Signed build provenance (GitHub artifact attestations, SLSA) for every release archive and `checksums.txt` — verify a download with `gh attestation verify <file> --repo dagistankaradeniz/gcp-note-taking-cli`.
 - [ ] `winget` manifest submission to `microsoft/winget-pkgs` — manual PR process, not automatable from CI.
 

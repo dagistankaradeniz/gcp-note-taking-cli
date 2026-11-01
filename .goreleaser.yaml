@@ -52,19 +52,28 @@ release:
     owner: dagistankaradeniz
     name: gcp-note-taking-cli
 
-brews:
+homebrew_casks:
   - name: quillink
     repository:
       owner: dagistankaradeniz
       name: homebrew-quillink
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://github.com/dagistankaradeniz/gcp-note-taking-cli"
     description: "Command-line client for Quillink"
-    install: |
-      bin.install "quillink"
-    test: |
-      system "#{bin}/quillink", "--version"
+    binaries:
+      - quillink
+    # Interpolate #{version} so `brew audit` sees a versioned URL (a
+    # literal tag in the URL counts as unversioned).
+    url:
+      template: "https://github.com/dagistankaradeniz/gcp-note-taking-cli/releases/download/v#{version}/{{ .ArtifactName }}"
+    # The macOS binaries aren't signed or notarized yet, so Gatekeeper
+    # would refuse to run the downloaded binary without this.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/quillink"]
+          end
 
 # The winget manifest still needs a one-time manual PR to
 # microsoft/winget-pkgs -- not automatable from this repo alone. See
