@@ -55,7 +55,7 @@ quillink logout
 
 ### Interactive session
 
-Run `quillink` with no arguments in a terminal to open a session: a short banner with suggested commands, then an input box that stays at the bottom of the window with a status line under it (workspace, account and plan, what's unlocked). Type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`). Output is printed above the box into the terminal's normal scrollback, so scrolling, the mouse wheel and copying text work as usual.
+Run `quillink` with no arguments in a terminal to open a session: a short banner with suggested commands, then an input box that stays at the bottom of the window with a status line under it (workspace, account and plan, what's unlocked). Type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`). The session takes the whole window, like `less` or `vim`: output goes into a pane above the box that scrolls with the mouse wheel or PgUp/PgDn (Ctrl+L clears it), and leaving the session returns your terminal as it was. While the session owns the mouse, select text with Shift-drag (Option-drag in macOS Terminal and iTerm2).
 
 - While you type, a list of matching commands and flags appears under the box: ↑/↓ to pick, Tab to accept, Esc to hide. Without the list, ↑/↓ recall earlier commands. History is kept in memory only, and lines that pass `--token` are never recorded.
 - A running command shows a spinner with its elapsed time, or a progress bar when the total is known. Ctrl-C twice leaves the session (a running command is stopped with it).

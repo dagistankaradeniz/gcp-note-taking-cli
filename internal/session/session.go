@@ -1,8 +1,7 @@
-// Package session is the interactive `quillink` session: an input box
-// that stays at the bottom of the terminal with a status line under it,
-// and command output printed above it into the terminal's own scrollback
-// -- so scrolling, the mouse wheel and text selection work as they always
-// do. It doesn't run commands itself; the Host does (the cmd package).
+// Package session is the interactive `quillink` session: a full-window
+// view with command output in a scrollable pane (mouse wheel, PgUp/PgDn)
+// and an input box pinned to the bottom with a status line under it. It
+// doesn't run commands itself; the Host does (the cmd package).
 package session
 
 import (
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -64,6 +64,8 @@ type Host struct {
 	// (login, logout, workspace use, unlock, lock...).
 	RefreshAfter func(line string) bool
 	History      *shell.History
+	// Intro is shown at the top of the output pane (the banner).
+	Intro string
 }
 
 // ErrInterrupted is returned by Run when the user pressed Ctrl+C twice
@@ -135,7 +137,11 @@ type model struct {
 	host    Host
 	input   textinput.Model
 	secret  textinput.Model
+	out     viewport.Model
+	lines   []string // output so far, oldest first
+	follow  bool     // keep the pane scrolled to the newest output
 	width   int
+	height  int
 	prompt  *promptMsg
 	running string // the line running, "" when idle
 	started time.Time
@@ -158,6 +164,8 @@ type model struct {
 const (
 	maxSuggestions = 6
 	quitWindow     = 2 * time.Second
+	// maxLines caps the output kept for scrolling back.
+	maxLines = 5000
 )
 
 func promptStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(ui.Brand).Bold(true) }
@@ -170,7 +178,41 @@ func newModel(h Host) model {
 	sec := textinput.New()
 	sec.EchoMode = textinput.EchoPassword
 	sec.EchoCharacter = '•'
-	return model{host: h, input: in, secret: sec, hist: -1, width: ui.Width()}
+	out := viewport.New()
+	out.SoftWrap = true
+	out.FillHeight = true
+	out.MouseWheelEnabled = true
+	// The pane scrolls with PgUp/PgDn and the wheel only: the arrow keys
+	// belong to the input (suggestions, history).
+	out.KeyMap = viewport.KeyMap{PageUp: out.KeyMap.PageUp, PageDown: out.KeyMap.PageDown}
+	m := model{host: h, input: in, secret: sec, out: out, hist: -1, follow: true, width: ui.Width()}
+	if h.Intro != "" {
+		m.lines = strings.Split(strings.TrimRight(h.Intro, "\n"), "\n")
+	}
+	return m
+}
+
+// add appends output lines to the pane.
+func (m *model) add(text string) {
+	m.lines = append(m.lines, strings.Split(text, "\n")...)
+	if over := len(m.lines) - maxLines; over > 0 {
+		m.lines = m.lines[over:]
+	}
+}
+
+// layout sizes the output pane to the space above the input box and
+// refills it.
+func (m *model) layout() {
+	lines := m.lines
+	if m.partial != "" {
+		lines = append(lines[:len(lines):len(lines)], m.partial)
+	}
+	m.out.SetWidth(max(m.width, 20))
+	m.out.SetHeight(max(m.height-lipgloss.Height(m.bottom()), 1))
+	m.out.SetContentLines(lines)
+	if m.follow {
+		m.out.GotoBottom()
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -197,11 +239,23 @@ func (m *model) startTicking() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	nm := next.(model)
+	nm.layout()
+	return nm, cmd
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		m.width, m.height = msg.Width, msg.Height
 		ui.SetWidth(msg.Width)
 		m.input.SetWidth(max(msg.Width-8, 10))
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		m.out, _ = m.out.Update(msg)
+		m.follow = m.out.AtBottom()
 		return m, nil
 
 	case tickMsg:
@@ -218,9 +272,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if i < 0 {
 			return m, nil
 		}
-		lines := m.partial[:i]
+		m.add(m.partial[:i])
 		m.partial = m.partial[i+1:]
-		return m, tea.Println(lines)
+		return m, nil
 
 	case progressMsg:
 		m.prog = msg.state
@@ -240,7 +294,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case doneMsg:
 		var cmds []tea.Cmd
 		if m.partial != "" {
-			cmds = append(cmds, tea.Println(m.partial))
+			m.add(m.partial)
 			m.partial = ""
 		}
 		line := m.running
@@ -252,7 +306,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quit = true
 			return m, tea.Sequence(append(cmds, tea.Quit)...)
 		case Clear:
-			cmds = append(cmds, tea.ClearScreen)
+			m.lines = nil
+			m.follow = true
 		}
 		if m.host.RefreshAfter != nil && m.host.RefreshAfter(line) {
 			cmds = append(cmds, m.fetchStatus())
@@ -311,7 +366,14 @@ func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if k == "ctrl+l" {
-		return m, tea.ClearScreen
+		m.lines = nil
+		m.follow = true
+		return m, nil
+	}
+	if k == "pgup" || k == "pgdown" {
+		m.out, _ = m.out.Update(msg)
+		m.follow = m.out.AtBottom()
+		return m, nil
 	}
 
 	switch k {
@@ -411,11 +473,12 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 	if m.host.History != nil {
 		m.host.History.Add(line)
 	}
-	echo := ui.Render(promptStyle().Render("› ") + line)
+	m.add(ui.Render(promptStyle().Render("› ") + line))
+	m.follow = true
 	m.running = line
 	m.started = time.Now()
 	run := func() tea.Msg { return doneMsg{outcome: capture(func() Outcome { return m.host.Run(line) })} }
-	return m, tea.Sequence(tea.Println(echo), tea.Batch(run, m.startTicking()))
+	return m, tea.Batch(run, m.startTicking())
 }
 
 // capture runs fn with stdout and stderr going to the session, line by
@@ -455,6 +518,17 @@ func capture(fn func() Outcome) Outcome {
 }
 
 func (m model) View() tea.View {
+	v := tea.NewView(m.out.View() + "\n" + m.bottom())
+	v.AltScreen = true
+	// Wheel events come to the pane; selecting text takes Shift-drag
+	// (Option-drag on macOS) while the mouse is captured.
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+// bottom is everything under the output pane: spinner, input box,
+// suggestions and the status line.
+func (m model) bottom() string {
 	w := max(m.width, 20)
 	var b strings.Builder
 
@@ -503,7 +577,7 @@ func (m model) View() tea.View {
 	}
 
 	b.WriteString(m.statusLine(w))
-	return tea.NewView(ui.Render(b.String()))
+	return ui.Render(b.String())
 }
 
 func (m model) statusLine(w int) string {
@@ -524,7 +598,10 @@ func (m model) statusLine(w int) string {
 	if m.lastDur > 0 && m.running == "" {
 		right = append(right, fmt.Sprintf("%.1fs", m.lastDur.Seconds()))
 	}
-	right = append(right, "Tab complete · ↑ history · Ctrl+D exit")
+	if !m.follow {
+		right = append(right, ui.Fg(ui.Amber, "scrolled up · PgDn for latest", false))
+	}
+	right = append(right, "Tab complete · ↑ history · PgUp scroll · Ctrl+D exit")
 	l := " " + strings.Join(left, ui.Fg(ui.Subtle, " │ ", false))
 	r := strings.Join(right, ui.Fg(ui.Subtle, " · ", false)) + " "
 	gap := w - ansi.StringWidth(l) - ansi.StringWidth(r)

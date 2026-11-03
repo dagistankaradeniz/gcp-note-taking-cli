@@ -111,19 +111,24 @@ func runShell() error {
 	p := style.For(out)
 	cols := terminalColumns()
 
+	// The session takes the whole window and starts with the banner at the
+	// top of its output pane. The animation plays first, in place, and is
+	// wiped again so leaving the session returns to a clean terminal.
+	var intro strings.Builder
 	if cols >= banner.Width {
 		net := banner.NewNetwork(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
-		fmt.Fprintln(out)
-		if os.Getenv("QUILLINK_NO_ANIMATION") != "" {
-			for _, line := range net.Render(p, net.Final()) {
-				fmt.Fprintln(out, line)
-			}
-		} else {
+		final := net.Render(p, net.Final())
+		if os.Getenv("QUILLINK_NO_ANIMATION") == "" {
+			fmt.Fprintln(out)
 			playSkippable(net, out, p)
+			fmt.Fprintf(out, "\033[%dA\r\033[J", len(final)+1)
+		}
+		intro.WriteString("\n")
+		for _, line := range final {
+			intro.WriteString(line + "\n")
 		}
 	}
-	fmt.Fprint(out, banner.Compose(p, bannerInfo(), cols, shellSuggestions()))
-	fmt.Fprintln(out)
+	intro.WriteString(banner.Compose(p, bannerInfo(), cols, shellSuggestions()))
 
 	// Asked before the session owns the keyboard: the answer comes back
 	// on stdin.
@@ -151,6 +156,7 @@ func runShell() error {
 		Status:       sessionStatus,
 		RefreshAfter: changesStatus,
 		History:      shell.NewHistory(shellHistoryLimit),
+		Intro:        intro.String(),
 	})
 	if errors.Is(err, session.ErrInterrupted) {
 		zkSessionWipe()
