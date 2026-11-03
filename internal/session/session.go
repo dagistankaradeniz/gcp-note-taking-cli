@@ -170,6 +170,7 @@ type model struct {
 	status  Status
 	quitAt  time.Time // first Ctrl+C, for the "again to exit" window
 	lastDur time.Duration
+	lastEnd time.Time // when the last command finished; zero after a clear
 	quit    bool
 	killed  bool
 }
@@ -179,6 +180,9 @@ const (
 	quitWindow     = 2 * time.Second
 	// maxLines caps the output kept for scrolling back.
 	maxLines = 5000
+	// divider marks a line in the pane that is drawn as a rule between one
+	// command's output and the next command; the rest of it is the label.
+	divider = "\x00divider\x00"
 )
 
 func promptStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(ui.Brand).Bold(true) }
@@ -222,7 +226,12 @@ func (m *model) layout() {
 	if len(m.intro) > 0 {
 		lines = strings.Split(strings.TrimRight(m.intro[m.introAt], "\n"), "\n")
 	}
-	lines = append(lines, m.lines...)
+	for _, l := range m.lines {
+		if label, ok := strings.CutPrefix(l, divider); ok {
+			l = rule(label, max(m.width, 20))
+		}
+		lines = append(lines, l)
+	}
 	if m.partial != "" {
 		lines = append(lines, m.partial)
 	}
@@ -334,12 +343,14 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = ""
 		m.prog = nil
 		m.lastDur = time.Since(m.started)
+		m.lastEnd = time.Now()
 		switch msg.outcome {
 		case Quit:
 			m.quit = true
 			return m, tea.Sequence(append(cmds, tea.Quit)...)
 		case Clear:
 			m.lines, m.intro, m.introAt = nil, nil, 0
+			m.lastEnd = time.Time{}
 			m.follow = true
 		}
 		if m.host.RefreshAfter != nil && m.host.RefreshAfter(line) {
@@ -403,6 +414,7 @@ func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if k == "ctrl+l" {
 		m.lines, m.intro, m.introAt = nil, nil, 0
+		m.lastEnd = time.Time{}
 		m.follow = true
 		return m, nil
 	}
@@ -508,6 +520,9 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 	}
 	if m.host.History != nil {
 		m.host.History.Add(line)
+	}
+	if !m.lastEnd.IsZero() {
+		m.add(divider + m.lastEnd.Format("15:04") + " · " + duration(m.lastDur))
 	}
 	m.add(ui.Render(promptStyle().Render("› ") + highlight(line, m.host.Classify)))
 	m.follow = true
@@ -693,7 +708,7 @@ func (m model) statusLine(w int) string {
 		right = append(right, muted("🔓 "+u))
 	}
 	if m.lastDur > 0 && m.running == "" {
-		right = append(right, muted(fmt.Sprintf("%.1fs", m.lastDur.Seconds())))
+		right = append(right, muted(duration(m.lastDur)))
 	}
 	if !m.follow {
 		right = append(right, ui.Fg(ui.Amber, "scrolled up · PgDn for latest", false))
@@ -706,6 +721,25 @@ func (m model) statusLine(w int) string {
 		return ansi.Truncate(l, w, "…")
 	}
 	return l + strings.Repeat(" ", gap) + r
+}
+
+// rule is the divider between commands: a dim line across the pane with
+// the previous command's finish time and duration at its right end.
+func rule(label string, w int) string {
+	tail := " " + label + " "
+	if ansi.StringWidth(tail)+4 > w {
+		return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w), false))
+	}
+	return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w-ansi.StringWidth(tail)-2), false) +
+		ui.Fg(ui.Muted, tail, false) + ui.Fg(ui.Subtle, "──", false))
+}
+
+// duration is short: tenths under a minute, whole seconds above.
+func duration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return d.Round(time.Second).String()
 }
 
 func orDash(s string) string {
