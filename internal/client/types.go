@@ -284,6 +284,8 @@ type StatusResponse struct {
 	Authenticated  bool     `json:"authenticated"`
 	Scopes         []string `json:"scopes"`
 	CredentialType string   `json:"credential_type"`
+	Email          string   `json:"email,omitempty"`
+	Plan           string   `json:"plan,omitempty"`
 }
 
 // Zero-Knowledge bootstrap -- read-only mirrors of app/models/zk.py's

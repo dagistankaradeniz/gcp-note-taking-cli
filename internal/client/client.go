@@ -13,6 +13,18 @@ import (
 
 const DefaultAPIBase = "https://note-taking-app-prod.web.app"
 
+// Busy, when set, is called as each /v1 request starts and returns what
+// to call once it's answered -- the CLI hangs its "working…" spinner on
+// it. Left nil, nothing is shown.
+var Busy func() (done func())
+
+func busy() func() {
+	if Busy == nil {
+		return func() {}
+	}
+	return Busy()
+}
+
 // ProblemDetail mirrors the backend's RFC 7807 error shape, scoped to
 // every /v1 response (see gcp-note-taking-backend app/models/api_access.py).
 type ProblemDetail struct {
@@ -121,13 +133,16 @@ func (c *Client) Do(method, path string, query url.Values, body, out any) error 
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	done := busy()
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
+		done()
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
+	done()
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
@@ -176,13 +191,16 @@ func (c *Client) DoRaw(path string, query url.Values) ([]byte, error) {
 	req.Header.Set("User-Agent", "quillink-cli/"+Version)
 	req.Header.Set("X-Client-Version", "quillink-cli/"+Version)
 
+	done := busy()
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
+		done()
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
+	done()
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}

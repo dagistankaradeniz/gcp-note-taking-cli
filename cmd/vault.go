@@ -11,9 +11,9 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notecrypto"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 // The Vault over /v1/vault (backend app/routers/v1_vault.py), read-only.
@@ -45,13 +45,11 @@ func resolveVaultPassword() (string, error) {
 		return line, nil
 	}
 	if isTerminalStdin() {
-		fmt.Fprint(os.Stderr, "Vault master password: ")
-		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		pw, err := askSecret("Vault master password")
 		if err != nil {
 			return "", fmt.Errorf("read Vault password: %w", err)
 		}
-		return string(pw), nil
+		return pw, nil
 	}
 	return "", fmt.Errorf("no Vault password provided -- use an interactive terminal or --vault-password-stdin")
 }
@@ -75,6 +73,8 @@ func resolveVaultKey(c *client.Client) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	unlocking := progress.Start("Unlocking the Vault", 0)
+	defer unlocking.Done()
 	verifier, err := notecrypto.DeriveVerifierHash(password, *status.VaultSalt, *status.VaultIterations)
 	if err != nil {
 		return nil, err
@@ -161,6 +161,8 @@ type vaultContents struct {
 }
 
 func loadVault(c *client.Client, key []byte) (*vaultContents, error) {
+	task := progress.Start("Decrypting the Vault", 0)
+	defer task.Done()
 	var notes client.VaultNoteListResponse
 	if err := c.Do("GET", "/v1/vault/notes", nil, nil, &notes); err != nil {
 		return nil, err
@@ -280,7 +282,7 @@ var vaultGetCmd = &cobra.Command{
 			if jsonOutput {
 				return output.JSON(n)
 			}
-			fmt.Printf("%s\n\n%s\n", n.Title, bodyToText(n.Body))
+			printNote(n.Title, n.Body, "🛡 Vault")
 			return nil
 		}
 		cv := v.canvas(args[0])

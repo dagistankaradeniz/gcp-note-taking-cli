@@ -91,9 +91,28 @@ func printNoteTable(notes []client.Note) {
 		if n.FolderID != nil {
 			folder = *n.FolderID
 		}
-		rows = append(rows, []string{n.ID, n.Title, folder, n.UpdatedAt})
+		rows = append(rows, []string{n.ID, noteTitleCell(n), folder, n.UpdatedAt})
 	}
 	output.Table([]string{"ID", "TITLE", "FOLDER", "UPDATED"}, rows)
+}
+
+// noteTitleCell marks pinned, locked and Vault notes on a terminal; piped
+// output keeps the bare title.
+func noteTitleCell(n client.Note) string {
+	if !richTable() {
+		return n.Title
+	}
+	var marks string
+	if n.Pinned {
+		marks += "📌 "
+	}
+	if n.Locked || n.NoteEncrypted {
+		marks += "🔒 "
+	}
+	if n.VaultEncrypted {
+		marks += "🛡 "
+	}
+	return marks + n.Title
 }
 
 // applySensitiveMasking is a placeholder for the CLI-side counterpart of

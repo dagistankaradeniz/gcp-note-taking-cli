@@ -14,16 +14,14 @@ var loginCmd = &cobra.Command{
 	Short: "Sign in via the browser (OAuth 2.0 Device Authorization Grant)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
-		token, err := auth.Login(c, resolveClientID(), shouldOpenBrowser(), func(format string, a ...any) {
-			fmt.Printf(format, a...)
-		})
+		token, err := auth.Login(c, resolveClientID(), shouldOpenBrowser(), loginView())
 		if err != nil {
 			return err
 		}
 		if err := storeForCurrent().Save(token); err != nil {
 			return fmt.Errorf("save credential: %w", err)
 		}
-		fmt.Println("Logged in.")
+		success("Logged in.")
 		return nil
 	},
 }

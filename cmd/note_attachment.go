@@ -12,6 +12,8 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notecrypto"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
 	"github.com/spf13/cobra"
 )
@@ -139,7 +141,9 @@ file or a password.`,
 		if fileResp.StatusCode >= 400 {
 			return fmt.Errorf("download attachment: signed URL returned %d", fileResp.StatusCode)
 		}
-		data, err := io.ReadAll(io.LimitReader(fileResp.Body, attachmentDownloadMaxBytes+1))
+		downloading := progress.StartBytes("Downloading "+att.OriginalFilename, int(max(fileResp.ContentLength, 0)))
+		data, err := io.ReadAll(io.LimitReader(progressReader{fileResp.Body, downloading}, attachmentDownloadMaxBytes+1))
+		downloading.Done()
 		if err != nil {
 			return fmt.Errorf("download attachment: %w", err)
 		}
@@ -157,9 +161,21 @@ file or a password.`,
 		if err := os.WriteFile(noteAttachmentDownloadOut, plain, 0o600); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Saved %s to %s\n", att.OriginalFilename, noteAttachmentDownloadOut)
+		ui.Success(os.Stderr, fmt.Sprintf("Saved %s to %s", att.OriginalFilename, noteAttachmentDownloadOut))
 		return nil
 	},
+}
+
+// progressReader moves a byte bar on as the download is read.
+type progressReader struct {
+	r    io.Reader
+	task *progress.Task
+}
+
+func (p progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.task.Add(n)
+	return n, err
 }
 
 type attachmentMetadata struct {

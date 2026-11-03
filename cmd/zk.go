@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
-	"golang.org/x/term"
 )
 
 // Zero-Knowledge accounts get read-only CLI access (see this repo's
@@ -43,6 +44,9 @@ func init() {
 var stdinReader = bufio.NewReader(os.Stdin)
 
 func readStdinLine() (string, error) {
+	if session.Active() {
+		return "", errStdinInSession("reading from stdin")
+	}
 	line, err := stdinReader.ReadString('\n')
 	if err != nil && line == "" {
 		return "", err
@@ -75,13 +79,11 @@ func resolveZkPassphrase() (string, error) {
 		return line, nil
 	}
 	if isTerminalStdin() {
-		fmt.Fprint(os.Stderr, "Zero-Knowledge Recovery Passphrase: ")
-		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		pw, err := askSecret("Zero-Knowledge Recovery Passphrase")
 		if err != nil {
 			return "", fmt.Errorf("read Recovery Passphrase: %w", err)
 		}
-		return string(pw), nil
+		return pw, nil
 	}
 	return "", fmt.Errorf("no Recovery Passphrase provided -- use an interactive terminal or --zk-passphrase-stdin")
 }
@@ -101,13 +103,11 @@ func resolveZkSecretKey() ([]byte, error) {
 			return nil, fmt.Errorf("read Recovery Secret Key from stdin: %w", err)
 		}
 	case isTerminalStdin():
-		fmt.Fprint(os.Stderr, "Zero-Knowledge Recovery Secret Key: ")
-		key, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		key, err := askSecret("Zero-Knowledge Recovery Secret Key")
 		if err != nil {
 			return nil, fmt.Errorf("read Recovery Secret Key: %w", err)
 		}
-		formatted = string(key)
+		formatted = key
 	default:
 		return nil, fmt.Errorf("no Recovery Secret Key provided -- use an interactive terminal or --zk-secret-key-stdin")
 	}
@@ -168,6 +168,8 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 		params.Ops = *status.KdfOps
 	}
 
+	unlocking := progress.Start("Unlocking your account key", 0)
+	defer unlocking.Done()
 	kek, err := zkcrypto.DeriveKek(passphrase, secretKeyRaw, params)
 	if err != nil {
 		return nil, fmt.Errorf("derive account key: %w", err)

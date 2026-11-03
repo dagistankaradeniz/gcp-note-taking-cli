@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -61,7 +59,7 @@ var folderUpdateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(folder)
 		}
-		fmt.Printf("Updated folder %s: %s\n", folder.ID, folder.Name)
+		success("Updated folder %s: %s", folder.ID, folder.Name)
 		return nil
 	},
 }

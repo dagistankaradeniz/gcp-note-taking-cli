@@ -13,7 +13,7 @@ var logoutCmd = &cobra.Command{
 		if err := storeForCurrent().Delete(); err != nil {
 			return fmt.Errorf("clear credential: %w", err)
 		}
-		fmt.Println("Logged out.")
+		success("Logged out.")
 		return nil
 	},
 }

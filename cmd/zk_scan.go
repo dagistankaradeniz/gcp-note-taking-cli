@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
 )
 
 // Zero-Knowledge accounts: the server holds tags and titles only as
@@ -33,6 +34,9 @@ type zkScan struct {
 
 func scanZk(c *client.Client, dek []byte, withCanvases bool) (*zkScan, error) {
 	s := &zkScan{canvases: map[string]string{}}
+	// The server can't count what it can't read, so it's a running count.
+	task := progress.Start("Decrypting notes", 0)
+	defer task.Done()
 	cursor := ""
 	for {
 		q := url.Values{}
@@ -48,6 +52,7 @@ func scanZk(c *client.Client, dek []byte, withCanvases bool) (*zkScan, error) {
 			decryptNoteZK(dek, &resp.Notes[i])
 		}
 		s.notes = append(s.notes, resp.Notes...)
+		task.Set(len(s.notes))
 		if !resp.HasMore || len(resp.Notes) == 0 {
 			break
 		}

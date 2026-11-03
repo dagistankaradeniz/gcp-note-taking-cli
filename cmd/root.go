@@ -2,7 +2,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/auth"
@@ -34,7 +33,7 @@ func Execute() {
 		if apiErr, ok := err.(*client.APIError); ok {
 			exitCode = output.CodeForStatus(apiErr.Status)
 		}
-		fmt.Fprintln(os.Stderr, "Error:", err)
+		printError(err)
 		os.Exit(exitCode)
 	}
 }

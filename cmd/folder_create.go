@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -45,7 +43,7 @@ var folderCreateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(folder)
 		}
-		fmt.Printf("Created folder %s: %s\n", folder.ID, folder.Name)
+		success("Created folder %s: %s", folder.ID, folder.Name)
 		return nil
 	},
 }

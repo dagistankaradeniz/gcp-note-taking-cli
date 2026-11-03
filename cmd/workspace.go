@@ -46,7 +46,7 @@ var workspaceAddCmd = &cobra.Command{
 		if err := reg.Save(); err != nil {
 			return err
 		}
-		fmt.Printf("Workspace %q added (%s). Run `quillink workspace login %s` to sign in.\n", name, wsAddAPIBase, name)
+		success("Workspace %q added (%s). Run `quillink workspace login %s` to sign in.", name, wsAddAPIBase, name)
 		return nil
 	},
 }
@@ -80,9 +80,7 @@ var workspaceLoginCmd = &cobra.Command{
 				cid = resolveClientID()
 			}
 			c := client.New(w.APIBase, "")
-			token, err = auth.Login(c, cid, shouldOpenBrowser(), func(format string, a ...any) {
-				fmt.Printf(format, a...)
-			})
+			token, err = auth.Login(c, cid, shouldOpenBrowser(), loginView())
 			if err != nil {
 				return err
 			}
@@ -90,7 +88,7 @@ var workspaceLoginCmd = &cobra.Command{
 		if err := auth.NewStoreFor(name).Save(token); err != nil {
 			return fmt.Errorf("save credential: %w", err)
 		}
-		fmt.Printf("Logged in to workspace %q.\n", name)
+		success("Logged in to workspace %q.", name)
 		return nil
 	},
 }
@@ -112,7 +110,7 @@ var workspaceUseCmd = &cobra.Command{
 		if err := reg.Save(); err != nil {
 			return err
 		}
-		fmt.Printf("Current workspace set to %q.\n", name)
+		success("Current workspace set to %q.", name)
 		return nil
 	},
 }
@@ -163,7 +161,7 @@ var workspaceRemoveCmd = &cobra.Command{
 			return err
 		}
 		_ = auth.NewStoreFor(name).Delete()
-		fmt.Printf("Workspace %q removed.\n", name)
+		success("Workspace %q removed.", name)
 		return nil
 	},
 }

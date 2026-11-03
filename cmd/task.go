@@ -10,6 +10,7 @@ import (
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
 	"github.com/spf13/cobra"
 )
@@ -216,7 +217,7 @@ var taskCreateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(t)
 		}
-		fmt.Printf("Created task %s\n", t.ID)
+		success("Created task %s", t.ID)
 		return nil
 	},
 }
@@ -279,7 +280,7 @@ var taskUpdateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(t)
 		}
-		fmt.Printf("Updated task %s\n", t.ID)
+		success("Updated task %s", t.ID)
 		return nil
 	},
 }
@@ -305,9 +306,9 @@ func completeCmd(use, short string, completed bool) *cobra.Command {
 				return output.JSON(t)
 			}
 			if completed {
-				fmt.Printf("Marked task %s done\n", t.ID)
+				success("Marked task %s done", t.ID)
 			} else {
-				fmt.Printf("Reopened task %s\n", t.ID)
+				success("Reopened task %s", t.ID)
 			}
 			return nil
 		},
@@ -327,7 +328,7 @@ var taskDeleteCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(map[string]any{"id": args[0], "status": "trashed"})
 		}
-		fmt.Printf("Moved task %s to the trash (restore with `quillink task restore %s`)\n", args[0], args[0])
+		success("Moved task %s to the trash (restore with `quillink task restore %s`)", args[0], args[0])
 		return nil
 	},
 }
@@ -344,7 +345,7 @@ var taskRestoreCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(t)
 		}
-		fmt.Printf("Restored task %s\n", t.ID)
+		success("Restored task %s", t.ID)
 		return nil
 	},
 }
@@ -454,6 +455,32 @@ func formatDue(t client.Task) string {
 	return day + " " + due.Format("15:04")
 }
 
+// dueCell colours an open task's due date on a terminal: red when
+// overdue, amber when due today.
+func dueCell(t client.Task, text string) string {
+	if t.Completed || t.DueAt == nil {
+		return text
+	}
+	due, err := time.Parse(time.RFC3339Nano, *t.DueAt)
+	if err != nil {
+		return text
+	}
+	now := time.Now()
+	switch {
+	case due.Before(now) && !(t.AllDay && sameDay(due.Local(), now)):
+		return ui.Fg(ui.Red, text, true)
+	case sameDay(due.Local(), now):
+		return ui.Fg(ui.Amber, text, false)
+	}
+	return text
+}
+
+func sameDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
 func printTaskTable(c *client.Client, tasks []client.Task) {
 	names := categoryNames(c, tasks)
 	rows := make([][]string, 0, len(tasks))
@@ -466,7 +493,16 @@ func printTaskTable(c *client.Client, tasks []client.Task) {
 		if t.Recurrence != nil {
 			title += " ↻"
 		}
-		rows = append(rows, []string{t.ID, done, title, formatDue(t), names[ptr(t.CategoryID)]})
+		due := formatDue(t)
+		if richTable() {
+			done = "☐"
+			if t.Completed {
+				done = ui.Fg(ui.Green, "☑", false)
+				title = ui.Fg(ui.Muted, title, false)
+			}
+			due = dueCell(t, due)
+		}
+		rows = append(rows, []string{t.ID, done, title, due, names[ptr(t.CategoryID)]})
 	}
 	output.Table([]string{"ID", "DONE", "TITLE", "DUE", "CATEGORY"}, rows)
 }

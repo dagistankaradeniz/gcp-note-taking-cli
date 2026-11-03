@@ -7,23 +7,43 @@ package style
 import (
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/term"
 )
 
 const reset = "\033[0m"
 
-// captured is a pipe the interactive session reads command output from
-// before showing it on the terminal (or in its pager); it counts as a
-// terminal so colours survive the detour.
-var captured *os.File
+// captured holds the pipes the interactive session reads command output
+// (stdout and stderr) from before showing it on the terminal; they count
+// as the terminal so colours survive the detour.
+var (
+	capturedMu sync.RWMutex
+	captured   = map[*os.File]bool{}
+)
 
-// TreatAsTerminal marks f as standing in for the terminal (nil clears it).
-func TreatAsTerminal(f *os.File) { captured = f }
+// TreatAsTerminal marks the files as standing in for the terminal; with
+// no files it clears the marks.
+func TreatAsTerminal(files ...*os.File) {
+	capturedMu.Lock()
+	defer capturedMu.Unlock()
+	captured = map[*os.File]bool{}
+	for _, f := range files {
+		if f != nil {
+			captured[f] = true
+		}
+	}
+}
+
+func isCaptured(f *os.File) bool {
+	capturedMu.RLock()
+	defer capturedMu.RUnlock()
+	return captured[f]
+}
 
 // IsTerminal reports whether f is a terminal, or stands in for one.
 func IsTerminal(f *os.File) bool {
-	return (captured != nil && f == captured) || term.IsTerminal(int(f.Fd()))
+	return isCaptured(f) || term.IsTerminal(int(f.Fd()))
 }
 
 // Enabled reports whether colour may be written to f.
@@ -31,7 +51,7 @@ func Enabled(f *os.File) bool {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false
 	}
-	if captured != nil && f == captured {
+	if isCaptured(f) {
 		return true
 	}
 	if !term.IsTerminal(int(f.Fd())) {

@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +13,7 @@ var folderDeleteCmd = &cobra.Command{
 		if err := c.Do("DELETE", "/v1/folders/"+args[0], nil, nil, nil); err != nil {
 			return err
 		}
-		fmt.Printf("Deleted folder %s\n", args[0])
+		success("Deleted folder %s", args[0])
 		return nil
 	},
 }

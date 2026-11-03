@@ -9,8 +9,8 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notecrypto"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var noteLockPasswordStdin bool
@@ -24,6 +24,9 @@ var noteLockPasswordStdin bool
 // --help says so explicitly.
 func resolveNewPassword() (string, error) {
 	if noteLockPasswordStdin {
+		if session.Active() {
+			return "", errStdinInSession("--password-stdin")
+		}
 		reader := bufio.NewReader(os.Stdin)
 		line, err := reader.ReadString('\n')
 		if err != nil && line == "" {
@@ -37,22 +40,18 @@ func resolveNewPassword() (string, error) {
 	if !isTerminalStdin() {
 		return "", fmt.Errorf("no password provided -- use an interactive terminal, --password-stdin, or QUILLINK_NOTE_PASSWORD")
 	}
-	fmt.Fprint(os.Stderr, "New password: ")
-	pw1, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	pw1, err := askSecret("New password")
 	if err != nil {
 		return "", fmt.Errorf("read password: %w", err)
 	}
-	fmt.Fprint(os.Stderr, "Confirm password: ")
-	pw2, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	pw2, err := askSecret("Confirm password")
 	if err != nil {
 		return "", fmt.Errorf("read password: %w", err)
 	}
-	if string(pw1) != string(pw2) {
+	if pw1 != pw2 {
 		return "", fmt.Errorf("passwords did not match")
 	}
-	return string(pw1), nil
+	return pw1, nil
 }
 
 var noteLockCmd = &cobra.Command{
@@ -113,7 +112,7 @@ sees the password or the plaintext body.`,
 		if jsonOutput {
 			return output.JSON(resp)
 		}
-		fmt.Println("Note locked.")
+		success("Note locked.")
 		return nil
 	},
 }

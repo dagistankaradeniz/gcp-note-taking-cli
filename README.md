@@ -55,14 +55,19 @@ quillink logout
 
 ### Interactive session
 
-Run `quillink` with no arguments in a terminal to open a full-screen session (your earlier terminal lines come back when it ends): a short banner with suggested commands, then a `quillink ›` prompt where you type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`).
+Run `quillink` with no arguments in a terminal to open a session: a short banner with suggested commands, then an input box that stays at the bottom of the window with a status line under it (workspace, account and plan, what's unlocked). Type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`). Output is printed above the box into the terminal's normal scrollback, so scrolling, the mouse wheel and copying text work as usual.
 
-- Up/down arrows recall earlier commands; Tab completes command, subcommand and flag names. History is kept in memory only, and lines that pass `--token` are never recorded.
+- While you type, a list of matching commands and flags appears under the box: ↑/↓ to pick, Tab to accept, Esc to hide. Without the list, ↑/↓ recall earlier commands. History is kept in memory only, and lines that pass `--token` are never recorded.
+- A running command shows a spinner with its elapsed time, or a progress bar when the total is known. Ctrl-C twice leaves the session (a running command is stopped with it).
+- Passwords and keys are asked for in the box itself, masked, and never enter history. `--*-stdin` flags don't work inside the session; leave them off to be asked.
 - A Zero-Knowledge account is unlocked once per session instead of per command. The key stays in memory only and is wiped after 15 minutes without use, on `lock`, and on `exit` / Ctrl-D.
-- Output taller than the window opens in a pager (arrows, PgUp/PgDn, space, `q` to return).
-- `clear` clears the screen. Ctrl-C during the banner animation skips it.
+- `clear` (or Ctrl-L) clears the screen. Ctrl-C during the banner animation skips it.
 - Scripts are unaffected: when stdin or stdout isn't a terminal, or with `--json`, bare `quillink` prints help as before.
-- `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation. Help text is coloured on a terminal and plain when piped.
+- `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation; `QUILLINK_THEME=light` or `dark` overrides the detected terminal background. Help text is coloured on a terminal and plain when piped.
+
+### On a terminal vs. in a script
+
+On a terminal, results are laid out for reading: tables fit the window (long titles are shortened with "…", dates read "3h ago"), pinned/locked/Vault notes and task status are marked, overdue tasks show in red, `note get` renders the note's Markdown, `whoami`, `org info` and `note stats` are small cards, and successes and errors start with ✓ / ✗ (errors with a hint). Slow steps show a spinner or progress bar on stderr. When output is piped or redirected, or with `--json`/`--output`, everything is the plain text it always was, byte for byte.
 
 ### Output formats and saving to a file
 

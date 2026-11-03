@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 )
 
 // SchemaVersion is the --json output schema's own version, independent
@@ -49,7 +51,13 @@ func JSON(v any) error {
 }
 
 // Table writes tab-aligned rows to stdout -- the human-readable default.
+// On a terminal it's laid out to fit the window instead (ui.Table);
+// piped or redirected it stays plain tab-aligned text.
 func Table(headers []string, rows [][]string) {
+	if ui.Rich(os.Stdout) {
+		fmt.Fprint(os.Stdout, ui.Table(headers, rows, ui.Width()))
+		return
+	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	defer w.Flush()
 

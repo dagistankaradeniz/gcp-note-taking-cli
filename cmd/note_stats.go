@@ -3,9 +3,12 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +25,15 @@ var noteStatsCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(stats)
 		}
+		if richTable() {
+			fmt.Print(ui.Card("Notes", []ui.Field{
+				{Label: "Total", Value: progress.Count(stats.TotalNotes)},
+				{Label: "Pinned", Value: progress.Count(stats.PinnedNotes)},
+				{Label: "Storage", Value: progress.Size(stats.TotalSizeBytes)},
+			}))
+			printActivity(stats.ByDay)
+			return nil
+		}
 		fmt.Printf("Total notes:  %d\n", stats.TotalNotes)
 		fmt.Printf("Total size:   %d bytes\n", stats.TotalSizeBytes)
 		fmt.Printf("Pinned notes: %d\n", stats.PinnedNotes)
@@ -35,6 +47,26 @@ var noteStatsCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// printActivity is notes per day as a small bar chart on a terminal.
+func printActivity(byDay map[string]int) {
+	if len(byDay) == 0 {
+		return
+	}
+	days := make([]string, 0, len(byDay))
+	most := 0
+	for d, n := range byDay {
+		days = append(days, d)
+		most = max(most, n)
+	}
+	sort.Strings(days)
+	fmt.Println(ui.Render(ui.Fg(ui.Muted, "Activity", true)))
+	for _, d := range days {
+		n := byDay[d]
+		bar := strings.Repeat("█", max(1, n*30/max(most, 1)))
+		fmt.Println(ui.Render("  " + ui.Fg(ui.Muted, d, false) + "  " + ui.Fg(ui.Brand, bar, false) + " " + fmt.Sprint(n)))
+	}
 }
 
 func init() {

@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +35,7 @@ even though ownership alone would otherwise be enough.`,
 		if err := c.Do("DELETE", "/v1/notes/"+args[0], nil, nil, nil); err != nil {
 			return err
 		}
-		fmt.Printf("Deleted note %s\n", args[0])
+		success("Deleted note %s", args[0])
 		return nil
 	},
 }

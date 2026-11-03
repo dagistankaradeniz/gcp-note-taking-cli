@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -72,7 +70,7 @@ var noteUpdateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(note)
 		}
-		fmt.Printf("Updated note %s: %s\n", note.ID, note.Title)
+		success("Updated note %s: %s", note.ID, note.Title)
 		return nil
 	},
 }

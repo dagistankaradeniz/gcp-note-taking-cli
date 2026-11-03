@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +59,7 @@ func prepareOutput(_ *cobra.Command, _ []string) error {
 	}
 	output.SetFormat(format)
 	jsonOutput = format != output.FormatTable
+	startProgress()
 
 	if outFile == "" {
 		return nil
@@ -86,6 +88,7 @@ func prepareOutput(_ *cobra.Command, _ []string) error {
 // no file behind. It also resets the per-command format, which matters in
 // the interactive session.
 func finishOutput(runErr error) error {
+	stopProgress()
 	defer func() {
 		output.SetFormat(output.FormatTable)
 		jsonOutput = false
@@ -109,6 +112,6 @@ func finishOutput(runErr error) error {
 		_ = os.Remove(tmp.Name())
 		return fmt.Errorf("save %s: %w", target, err)
 	}
-	fmt.Fprintln(os.Stderr, "Saved to", target)
+	ui.Success(os.Stderr, "Saved to "+target)
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/canvasrender"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
 	"github.com/spf13/cobra"
 )
@@ -194,11 +195,13 @@ extension (.png, .jpg, .jpeg). Use --out - to write the image to stdout.`,
 		if elements == nil {
 			return fmt.Errorf("%q can't be exported: %s", canvasTitle(cv), unreadableReason(cv))
 		}
+		rendering := progress.Start("Drawing the canvas", 0)
 		img, err := canvasrender.Render(elements, canvasrender.Options{
 			Scale:   canvasExportScale,
 			Palette: palette,
 			RefText: refResolver(c, elements),
 		})
+		rendering.Done()
 		if err != nil {
 			return err
 		}

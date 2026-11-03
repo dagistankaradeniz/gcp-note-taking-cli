@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"os"
 	"os/signal"
@@ -12,9 +11,11 @@ import (
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/banner"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
-	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/pager"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/shell"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/style"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -109,20 +110,6 @@ func runShell() error {
 	out := os.Stdout
 	p := style.For(out)
 	cols := terminalColumns()
-	fd := int(os.Stdin.Fd())
-
-	// Full screen: the alternate screen hides the user's earlier terminal
-	// lines and gives them back untouched when the session ends, however
-	// it ends.
-	fmt.Fprint(out, altScreenOn)
-	restore := func() { fmt.Fprint(out, "\033[?25h"+altScreenOff) }
-	defer restore()
-	defer func() {
-		if r := recover(); r != nil {
-			restore()
-			panic(r)
-		}
-	}()
 
 	if cols >= banner.Width {
 		net := banner.NewNetwork(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
@@ -138,72 +125,39 @@ func runShell() error {
 	fmt.Fprint(out, banner.Compose(p, bannerInfo(), cols, shellSuggestions()))
 	fmt.Fprintln(out)
 
-	// Ctrl-C while a command runs (or a terminal hang-up) ends the
-	// session; the screen and terminal mode are put back first.
+	// Asked before the session owns the keyboard: the answer comes back
+	// on stdin.
+	ui.SetDark(ui.Dark())
+	ui.SetWidth(cols)
+
+	// A terminal hang-up or kill still clears unlocked keys.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sig)
 	go func() {
 		if _, ok := <-sig; ok {
 			zkSessionWipe()
-			restore()
 			os.Exit(130)
 		}
 	}()
 
-	t := term.NewTerminal(struct {
-		io.Reader
-		io.Writer
-	}{os.Stdin, out}, p.BrandBold("quillink ›")+" ")
-	t.History = shell.NewHistory(shellHistoryLimit)
-	t.AutoCompleteCallback = completeShellLine
+	// No separate network spinner: the session already shows the running
+	// command with its own.
+	client.Busy = nil
 
-	for {
-		if w, h, err := term.GetSize(int(out.Fd())); err == nil {
-			_ = t.SetSize(w, h)
-		}
-		line, err := readShellLine(fd, t)
-		if errors.Is(err, io.EOF) {
-			fmt.Fprintln(out)
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		args, err := shell.Split(line)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			continue
-		}
-		if len(args) > 0 && args[0] == rootCmd.Name() {
-			args = args[1:]
-		}
-		if len(args) == 0 {
-			continue
-		}
-		switch args[0] {
-		case "exit", "quit":
-			return nil
-		case "clear":
-			fmt.Fprint(out, clearScreen)
-			continue
-		case "lock":
-			if zkSessionWipe() {
-				fmt.Fprintln(out, p.Dim("Locked: unlocked keys are cleared from memory."))
-			} else {
-				fmt.Fprintln(out, p.Dim("Nothing is unlocked."))
-			}
-			continue
-		}
-		runShellCommand(fd, args)
+	err := session.Run(session.Host{
+		Run:          runSessionLine,
+		Suggest:      suggestShellLine,
+		Status:       sessionStatus,
+		RefreshAfter: changesStatus,
+		History:      shell.NewHistory(shellHistoryLimit),
+	})
+	if errors.Is(err, session.ErrInterrupted) {
+		zkSessionWipe()
+		os.Exit(130)
 	}
+	return err
 }
-
-const (
-	altScreenOn  = "\033[?1049h\033[H"
-	altScreenOff = "\033[?1049l"
-	clearScreen  = "\033[H\033[2J"
-)
 
 // playSkippable runs the animation; Ctrl-C skips to the final frame
 // instead of quitting.
@@ -224,84 +178,84 @@ func playSkippable(net banner.Network, out *os.File, p style.Palette) {
 	net.Play(out, p, stop)
 }
 
-// readShellLine reads one line in raw mode (needed for history and
-// completion) and puts the terminal back before the command runs, so
-// command output and password prompts behave normally.
-func readShellLine(fd int, t *term.Terminal) (string, error) {
-	state, err := term.MakeRaw(fd)
+// runSessionLine runs one line typed in the session: a built-in, or a
+// command through the same Cobra tree as one-shot use.
+func runSessionLine(line string) session.Outcome {
+	args, err := shell.Split(line)
 	if err != nil {
-		return "", err
+		printError(err)
+		return session.Ran
 	}
-	defer func() { _ = term.Restore(fd, state) }()
-	return t.ReadLine()
-}
-
-// streamingCommands talk to the user while they run (the device-login
-// code and "waiting for approval"), so their output isn't held back for
-// the pager.
-var streamingCommands = map[string]bool{
-	"quillink login":           true,
-	"quillink workspace login": true,
-}
-
-// runShellCommand runs one command. Its output is collected first: when
-// it's taller than the screen it opens in the pager (the full-screen
-// session has no scrollback), otherwise it's printed as usual.
-func runShellCommand(fd int, args []string) {
+	if len(args) > 0 && args[0] == rootCmd.Name() {
+		args = args[1:]
+	}
+	if len(args) == 0 {
+		return session.Ran
+	}
+	switch args[0] {
+	case "exit", "quit":
+		return session.Quit
+	case "clear":
+		return session.Clear
+	case "lock":
+		if zkSessionWipe() {
+			success("Locked: unlocked keys are cleared from memory.")
+		} else {
+			ui.Notice(os.Stdout, "Nothing is unlocked.")
+		}
+		return session.Ran
+	}
 	resetFlags(rootCmd)
 	rootCmd.SetArgs(args)
-	if c, _, err := rootCmd.Find(args); err == nil && streamingCommands[c.CommandPath()] {
-		if err := finishOutput(rootCmd.Execute()); err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-		}
-		return
+	if err := finishOutput(rootCmd.Execute()); err != nil {
+		printError(err)
 	}
-
-	text, err := captureStdout(func() error { return finishOutput(rootCmd.Execute()) })
-	if err != nil {
-		defer fmt.Fprintln(os.Stderr, "Error:", err)
-	}
-	cols, height, sizeErr := term.GetSize(int(os.Stdout.Fd()))
-	rows := pager.Wrap(text, cols)
-	if sizeErr != nil || len(rows) < height-1 {
-		fmt.Fprint(os.Stdout, text)
-		return
-	}
-	state, rawErr := term.MakeRaw(fd)
-	if rawErr != nil {
-		fmt.Fprint(os.Stdout, text)
-		return
-	}
-	_ = pager.Show(os.Stdin, os.Stdout, style.For(os.Stdout), rows, height)
-	_ = term.Restore(fd, state)
-	// Back at the prompt, the end of the output stays in view.
-	tail := rows[max(len(rows)-(height-2), 0):]
-	fmt.Fprint(os.Stdout, clearScreen+strings.Join(tail, "\033[0m\n")+"\033[0m\n")
+	progress.Reset()
+	return session.Ran
 }
 
-// captureStdout runs fn with stdout redirected into a pipe that still
-// counts as the terminal for colour, and returns what was written.
-func captureStdout(fn func() error) (string, error) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", fn()
+// changesStatus: lines after which the status line is read again.
+func changesStatus(line string) bool {
+	args, _ := shell.Split(line)
+	for _, a := range args {
+		switch a {
+		case "login", "logout", "use", "remove", "unlock", "lock", "vault", "zk":
+			return true
+		}
 	}
-	prev := os.Stdout
-	os.Stdout = w
-	style.TreatAsTerminal(w)
-	var buf strings.Builder
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(done)
-	}()
-	runErr := fn()
-	os.Stdout = prev
-	style.TreatAsTerminal(nil)
-	_ = w.Close()
-	<-done
-	_ = r.Close()
-	return buf.String(), runErr
+	return false
+}
+
+// sessionStatus is the line under the input: where commands go, who is
+// signed in, and what's unlocked. It's read from local state plus one
+// /v1/status call, never more.
+func sessionStatus() session.Status {
+	st := session.Status{Workspace: workspaceLabel()}
+	owner := zkSessionOwner()
+	if zkSession.get(owner) != nil {
+		st.Unlocked = append(st.Unlocked, "Zero-Knowledge")
+	}
+	if vaultSession.get(owner) != nil {
+		st.Unlocked = append(st.Unlocked, "Vault")
+	}
+	if resolveToken() == "" {
+		return st
+	}
+	saved := client.Busy
+	client.Busy = nil // the status line has no spinner of its own
+	var status client.StatusResponse
+	err := newClient().Do("GET", "/v1/status", nil, nil, &status)
+	client.Busy = saved
+	if err != nil {
+		st.Account = "signed in"
+		return st
+	}
+	st.Account = status.Email
+	if st.Account == "" {
+		st.Account = credentialName(status.CredentialType)
+	}
+	st.Plan = planName(status.Plan)
+	return st
 }
 
 // resetFlags puts every flag back to its default, so a flag given to one
@@ -329,12 +283,10 @@ func resetFlags(c *cobra.Command) {
 	}
 }
 
-// completeShellLine completes the word before the cursor on Tab: a
-// command or subcommand name, or a flag of the command typed so far.
-func completeShellLine(line string, pos int, key rune) (string, int, bool) {
-	if key != '\t' {
-		return "", 0, false
-	}
+// suggestShellLine lists what can come at the word before the cursor --
+// a command or subcommand with its summary, or a flag of the command
+// typed so far with its usage -- for the session's dropdown and Tab.
+func suggestShellLine(line string, pos int) ([]session.Suggestion, int) {
 	before := line[:pos]
 	fields := strings.Fields(before)
 	word := ""
@@ -342,6 +294,7 @@ func completeShellLine(line string, pos int, key rune) (string, int, bool) {
 		word = fields[len(fields)-1]
 		fields = fields[:len(fields)-1]
 	}
+	from := len(before) - len(word)
 	if len(fields) > 0 && fields[0] == rootCmd.Name() {
 		fields = fields[1:]
 	}
@@ -356,31 +309,39 @@ func completeShellLine(line string, pos int, key rune) (string, int, bool) {
 		}
 		c = next
 	}
-	var cands []string
+	var out []session.Suggestion
 	if strings.HasPrefix(word, "-") {
 		add := func(f *pflag.Flag) {
-			if !f.Hidden {
-				cands = append(cands, "--"+f.Name)
+			if !f.Hidden && strings.HasPrefix("--"+f.Name, word) {
+				out = append(out, session.Suggestion{Text: "--" + f.Name, Desc: f.Usage})
 			}
 		}
 		c.Flags().VisitAll(add)
 		c.InheritedFlags().VisitAll(add)
-	} else {
+		return out, from
+	}
+	if c.HasAvailableSubCommands() || c == rootCmd {
 		for _, sub := range c.Commands() {
-			if sub.IsAvailableCommand() || sub.Name() == "help" {
-				cands = append(cands, sub.Name())
+			if (sub.IsAvailableCommand() || sub.Name() == "help") && strings.HasPrefix(sub.Name(), word) {
+				out = append(out, session.Suggestion{Text: sub.Name(), Desc: sub.Short})
 			}
 		}
 		if c == rootCmd && len(fields) == 0 {
-			cands = append(cands, shellBuiltins...)
+			for _, b := range shellBuiltins {
+				if strings.HasPrefix(b, word) {
+					out = append(out, session.Suggestion{Text: b, Desc: builtinDesc[b]})
+				}
+			}
 		}
 	}
-	completed, ok := shell.Complete(word, cands)
-	if !ok {
-		return "", 0, false
-	}
-	head := before[:len(before)-len(word)] + completed
-	return head + line[pos:], len(head), true
+	return out, from
+}
+
+var builtinDesc = map[string]string{
+	"clear": "clear the screen",
+	"exit":  "leave the session",
+	"lock":  "clear unlocked keys from memory",
+	"quit":  "leave the session",
 }
 
 func findChild(c *cobra.Command, name string) *cobra.Command {

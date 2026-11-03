@@ -9,6 +9,7 @@ import (
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notemd"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +77,9 @@ default -- redirect or use --out.`,
 			if err := addTagFilter(q, noteExportTags, noteExportMatch); err != nil {
 				return err
 			}
+			exporting := progress.Start("Exporting notes", 0)
 			data, err = c.DoRaw("/v1/notes/export", q)
+			exporting.Done()
 		} else {
 			data, err = c.DoRaw("/v1/notes/"+args[0]+"/export", nil)
 		}

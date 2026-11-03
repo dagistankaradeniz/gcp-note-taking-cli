@@ -9,8 +9,9 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notecrypto"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var noteUnlockPasswordStdin bool
@@ -21,6 +22,9 @@ var noteUnlockPasswordStdin bool
 // are the only accepted paths.
 func resolvePassword() (string, error) {
 	if noteUnlockPasswordStdin {
+		if session.Active() {
+			return "", errStdinInSession("--password-stdin")
+		}
 		reader := bufio.NewReader(os.Stdin)
 		line, err := reader.ReadString('\n')
 		if err != nil && line == "" {
@@ -32,13 +36,11 @@ func resolvePassword() (string, error) {
 		return env, nil
 	}
 	if isTerminalStdin() {
-		fmt.Fprint(os.Stderr, "Password: ")
-		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		pw, err := askSecret("Password")
 		if err != nil {
 			return "", fmt.Errorf("read password: %w", err)
 		}
-		return string(pw), nil
+		return pw, nil
 	}
 	return "", fmt.Errorf("no password provided -- use an interactive terminal, --password-stdin, or QUILLINK_NOTE_PASSWORD")
 }
@@ -89,6 +91,8 @@ func unlockEncryptedNote(c *client.Client, note client.Note, password string) ([
 	if note.LockSalt == nil || note.LockIterations == nil {
 		return nil, resp, fmt.Errorf("note is missing lock metadata")
 	}
+	unlocking := progress.Start("Unlocking the note", 0)
+	defer unlocking.Done()
 	verifierHash, err := notecrypto.DeriveVerifierHash(password, *note.LockSalt, *note.LockIterations)
 	if err != nil {
 		return nil, resp, err

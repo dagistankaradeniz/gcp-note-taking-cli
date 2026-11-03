@@ -75,7 +75,7 @@ var noteCreateCmd = &cobra.Command{
 		if jsonOutput {
 			return output.JSON(note)
 		}
-		fmt.Printf("Created note %s: %s\n", note.ID, note.Title)
+		success("Created note %s: %s", note.ID, note.Title)
 		return nil
 	},
 }
