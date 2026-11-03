@@ -43,6 +43,10 @@ type NoteCreateRequest struct {
 	Tags       []string       `json:"tags,omitempty"`
 	Pinned     bool           `json:"pinned,omitempty"`
 	EditorMode string         `json:"editor_mode,omitempty"`
+	// Zero-Knowledge accounts with the Knowledge Graph on only: the link
+	// ids the client read from the body before encrypting it.
+	LinksTo       []string `json:"links_to,omitempty"`
+	CanvasLinksTo []string `json:"canvas_links_to,omitempty"`
 }
 
 // TagCount mirrors app.models.note.TagCount (GET /v1/tags/counts).
@@ -59,6 +63,9 @@ type NoteUpdateRequest struct {
 	Tags           *[]string      `json:"tags,omitempty"`
 	Pinned         *bool          `json:"pinned,omitempty"`
 	ExcludedFromAI *bool          `json:"excluded_from_ai,omitempty"`
+	// As in NoteCreateRequest.
+	LinksTo       *[]string `json:"links_to,omitempty"`
+	CanvasLinksTo *[]string `json:"canvas_links_to,omitempty"`
 }
 
 // NoteLockRequest matches app.models.note.NoteLockRequest exactly:
@@ -294,6 +301,7 @@ type ZkStatusResponse struct {
 	KdfMemoryKiB              *int    `json:"kdf_memory_kib"`
 	KdfOps                    *int    `json:"kdf_ops"`
 	HasPendingCredentialReset bool    `json:"has_pending_credential_reset"`
+	ZkGraphOptIn              bool    `json:"zk_graph_opt_in"`
 }
 
 type ZkUnlockRequest struct {

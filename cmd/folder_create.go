@@ -27,10 +27,20 @@ var folderCreateCmd = &cobra.Command{
 		}
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
+		if dek != nil {
+			if req.Name, err = sealFolderName(dek, req.Name); err != nil {
+				return err
+			}
+		}
 		var folder client.Folder
 		if err := c.Do("POST", "/v1/folders", nil, req, &folder); err != nil {
 			return err
 		}
+		decryptFolderZK(dek, &folder)
 
 		if jsonOutput {
 			return output.JSON(folder)

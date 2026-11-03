@@ -198,10 +198,21 @@ var taskCreateCmd = &cobra.Command{
 		if taskCategory != "" {
 			req.CategoryID = &taskCategory
 		}
-		var t client.Task
-		if err := newClient().Do("POST", "/v1/tasks", nil, req, &t); err != nil {
+		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
 			return err
 		}
+		if dek != nil {
+			if err := sealTaskCreate(dek, &req); err != nil {
+				return err
+			}
+		}
+		var t client.Task
+		if err := c.Do("POST", "/v1/tasks", nil, req, &t); err != nil {
+			return err
+		}
+		decryptTaskZK(dek, &t)
 		if jsonOutput {
 			return output.JSON(t)
 		}
@@ -247,10 +258,24 @@ var taskUpdateCmd = &cobra.Command{
 		if len(body) == 0 {
 			return fmt.Errorf("nothing to update -- pass at least one flag (see --help)")
 		}
-		var t client.Task
-		if err := newClient().Do("PUT", "/v1/tasks/"+url.PathEscape(args[0]), nil, body, &t); err != nil {
+		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
 			return err
 		}
+		if dek != nil {
+			if err := refuseZkTaskScheduling(body["due_at"] != nil, body["category_id"] != nil); err != nil {
+				return err
+			}
+			if err := sealTaskWrite(c, dek, args[0], body); err != nil {
+				return err
+			}
+		}
+		var t client.Task
+		if err := c.Do("PUT", "/v1/tasks/"+url.PathEscape(args[0]), nil, body, &t); err != nil {
+			return err
+		}
+		decryptTaskZK(dek, &t)
 		if jsonOutput {
 			return output.JSON(t)
 		}

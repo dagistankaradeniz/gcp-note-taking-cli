@@ -41,10 +41,22 @@ var folderUpdateCmd = &cobra.Command{
 		}
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
+		if dek != nil && req.Name != nil {
+			sealed, err := sealFolderName(dek, *req.Name)
+			if err != nil {
+				return err
+			}
+			req.Name = &sealed
+		}
 		var folder client.Folder
 		if err := c.Do("PUT", "/v1/folders/"+args[0], nil, req, &folder); err != nil {
 			return err
 		}
+		decryptFolderZK(dek, &folder)
 
 		if jsonOutput {
 			return output.JSON(folder)

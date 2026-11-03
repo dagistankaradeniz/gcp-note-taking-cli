@@ -57,10 +57,20 @@ var noteCreateCmd = &cobra.Command{
 		}
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
+		if dek != nil {
+			if err := sealNoteCreate(c, dek, &req); err != nil {
+				return err
+			}
+		}
 		var note client.Note
 		if err := c.Do("POST", "/v1/notes", nil, req, &note); err != nil {
 			return err
 		}
+		decryptNoteZK(dek, &note)
 
 		if jsonOutput {
 			return output.JSON(note)
