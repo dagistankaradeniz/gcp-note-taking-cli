@@ -35,6 +35,14 @@ quillink tag list --counts             # every tag with its note/canvas counts
 quillink tag show work urgent          # notes carrying every one of these tags (--match any: at least one)
 quillink note list --tags work,urgent  # same filter on note list; note search takes --tags/--match too
 
+quillink task list --open              # open tasks; --from/--to YYYY-MM-DD for a date range (max 92 days)
+quillink task due                      # due today or overdue
+quillink task create "Send report" --due 2026-11-07          # all day; "2026-11-07 14:30" for a time
+quillink task update <id> --due 2026-11-10 | --clear-due
+quillink task done <id>                # task reopen <id> to undo; --date for one occurrence of a repeating task
+quillink task delete <id>              # moves it to the trash; task restore <id> brings it back
+quillink task category list
+
 quillink org info                      # Team plan: your organization's plan/seats/status
 quillink org members                   # Team plan: your organization's members
 

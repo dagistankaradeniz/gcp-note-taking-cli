@@ -87,6 +87,8 @@ func shellSuggestions() []banner.Suggestion {
 		{Command: "note search", Args: "<text>", Desc: "find notes"},
 		{Command: "note get", Args: "<id>", Desc: "open a note"},
 		{Command: "note create", Args: "<title>", Desc: "start a note"},
+		{Command: "task list", Args: "--open", Desc: "your open tasks"},
+		{Command: "task create", Args: "<title>", Desc: "add a task"},
 		{Command: "tag list", Desc: "tags and counts"},
 		{Command: "folder list", Desc: "your folders"},
 		{Command: "whoami", Desc: "who's signed in"},

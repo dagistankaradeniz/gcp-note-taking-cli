@@ -16,4 +16,5 @@ var CLIScopes = []string{
 	"notes:read", "notes:write",
 	"folders:read", "folders:write",
 	"tags:read", "tags:write",
+	"tasks:read", "tasks:write",
 }
