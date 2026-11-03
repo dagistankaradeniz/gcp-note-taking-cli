@@ -67,8 +67,13 @@ type Suggestion struct {
 	Command, Args, Desc string
 }
 
-// panelGap is the space between the wordmark block and the panel.
-const panelGap = 10
+// The space between the wordmark block and the panel, with a thin
+// vertical divider in its middle: as wide as the window allows, within
+// these bounds.
+const (
+	minPanelGap = 10
+	maxPanelGap = 16
+)
 
 // Header is the wordmark, slogan and version line, ending in a newline.
 // Below Width columns it falls back to a one-line wordmark.
@@ -84,17 +89,19 @@ func Compose(p style.Palette, info Info, columns int, suggestions []Suggestion) 
 	panel := panelLines(p, suggestions)
 	var b strings.Builder
 	b.WriteString("\n")
-	if len(panel) > 0 && columns >= Width && columns >= Width+panelGap+maxWidth(panel) {
+	if len(panel) > 0 && columns >= Width && columns >= Width+minPanelGap+maxWidth(panel) {
+		panelGap := min(columns-Width-maxWidth(panel), maxPanelGap)
+		half := panelGap / 2
 		for i := 0; i < max(len(left), len(panel)); i++ {
-			l := line{}
+			l, r := line{}, line{}
 			if i < len(left) {
 				l = left[i]
 			}
-			if i >= len(panel) {
-				b.WriteString(strings.TrimRight(l.text, " ") + "\n")
-				continue
+			if i < len(panel) {
+				r = panel[i]
 			}
-			b.WriteString(l.text + strings.Repeat(" ", Width+panelGap-l.width) + panel[i].text + "\n")
+			row := l.text + strings.Repeat(" ", Width+half-l.width) + p.Grey("│") + strings.Repeat(" ", panelGap-half-1) + r.text
+			b.WriteString(strings.TrimRight(row, " ") + "\n")
 		}
 		return b.String()
 	}
@@ -110,16 +117,20 @@ func Compose(p style.Palette, info Info, columns int, suggestions []Suggestion) 
 	return b.String()
 }
 
+// headerLines leaves the version line out when info is empty (the
+// session shows it in its top-right corner instead).
 func headerLines(p style.Palette, info Info, columns int) []line {
 	version := VersionLine(info)
 	vw := utf8.RuneCountInString(version)
 	if columns < Width {
-		return []line{
+		out := []line{
 			{indent + p.Bold("Quillink") + " " + p.Badge(" BETA "), len(indent) + 15},
 			{indent + Slogan, len(indent) + utf8.RuneCountInString(Slogan)},
-			{},
-			{indent + p.Dim(version), len(indent) + vw},
 		}
+		if version == "" {
+			return out
+		}
+		return append(out, line{}, line{indent + p.Dim(version), len(indent) + vw})
 	}
 	var out []line
 	for row := range glyphQ {
@@ -138,14 +149,12 @@ func headerLines(p style.Palette, info Info, columns int) []line {
 		}
 		out = append(out, line{text, w})
 	}
+	out = append(out, line{}, line{indent + Slogan, len(indent) + utf8.RuneCountInString(Slogan)})
+	if version == "" {
+		return out
+	}
 	pad := max(Width-vw, len(indent))
-	return append(out,
-		line{},
-		line{indent + Slogan, len(indent) + utf8.RuneCountInString(Slogan)},
-		line{},
-		line{},
-		line{strings.Repeat(" ", pad) + p.Dim(version), pad + vw},
-	)
+	return append(out, line{}, line{}, line{strings.Repeat(" ", pad) + p.Dim(version), pad + vw})
 }
 
 // panelLines renders the bold "Suggested" heading and one row per

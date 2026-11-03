@@ -9,7 +9,7 @@ import (
 )
 
 func TestPaneScrollsAndFollows(t *testing.T) {
-	var m tea.Model = newModel(Host{Intro: "banner"})
+	var m tea.Model = newModel(Host{IntroFrames: []string{"banner"}, Corner: "v9.9.9 · abc1234"})
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	for i := range 100 {
 		m, _ = m.Update(outputMsg(fmt.Sprintf("line %d\n", i)))
@@ -20,6 +20,9 @@ func TestPaneScrollsAndFollows(t *testing.T) {
 	}
 	if got := rows(m.View().Content); got != 20 {
 		t.Fatalf("view is %d rows, want the window's 20", got)
+	}
+	if first, _, _ := strings.Cut(m.View().Content, "\n"); !strings.Contains(first, "abc1234") {
+		t.Fatalf("top row should carry the version, got %q", first)
 	}
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})

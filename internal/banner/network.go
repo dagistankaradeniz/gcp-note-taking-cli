@@ -1,8 +1,6 @@
 package banner
 
 import (
-	"fmt"
-	"io"
 	"math"
 	"math/rand/v2"
 	"strings"
@@ -165,40 +163,6 @@ func (n Network) Render(p style.Palette, f Frame) []string {
 		lines[row] = strings.TrimRight(b.String(), " ")
 	}
 	return lines
-}
-
-// Play animates the network on w (a terminal), redrawing in place, and
-// always ends on the final frame. Closing stop skips straight to it.
-func (n Network) Play(w io.Writer, p style.Palette, stop <-chan struct{}) {
-	frames := n.Frames()
-	if len(frames) == 0 {
-		return
-	}
-	fmt.Fprint(w, "\033[?25l") // hide the cursor while drawing
-	defer fmt.Fprint(w, "\033[?25h")
-	tick := time.NewTicker(PlayDuration / time.Duration(len(frames)))
-	defer tick.Stop()
-	draw := func(f Frame, first bool) {
-		var b strings.Builder
-		if !first {
-			fmt.Fprintf(&b, "\033[%dA", netRows)
-		}
-		for _, line := range n.Render(p, f) {
-			b.WriteString("\033[2K" + line + "\n")
-		}
-		fmt.Fprint(w, b.String())
-	}
-	draw(frames[0], true)
-	for _, f := range frames[1:] {
-		select {
-		case <-stop:
-			draw(n.Final(), false)
-			return
-		case <-tick.C:
-			draw(f, false)
-		}
-	}
-	draw(n.Final(), false)
 }
 
 func abs(v int) int {

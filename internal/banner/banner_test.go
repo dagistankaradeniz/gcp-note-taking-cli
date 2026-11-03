@@ -63,8 +63,17 @@ func TestComposePanelBesideOrBelow(t *testing.T) {
 	if !strings.Contains(lines[1], "██") || !strings.HasSuffix(lines[1], "Suggested") {
 		t.Fatalf("panel not beside the wordmark: %q", lines[1])
 	}
-	if idx := strings.Index(lines[3], "note get <id>"); utf8.RuneCountInString(lines[3][:idx]) != Width+panelGap {
+	// 140 columns leave room for the widest gap, divider in its middle.
+	if idx := strings.Index(lines[3], "note get <id>"); utf8.RuneCountInString(lines[3][:idx]) != Width+maxPanelGap {
 		t.Errorf("panel column misaligned: %q", lines[3])
+	}
+	if idx := strings.Index(lines[3], "│"); utf8.RuneCountInString(lines[3][:idx]) != Width+maxPanelGap/2 {
+		t.Errorf("divider not in the middle of the gap: %q", lines[3])
+	}
+	// Just enough room: the gap shrinks to fit instead of moving the panel.
+	tight := Compose(style.Plain, info, Width+minPanelGap+maxWidth(panelLines(style.Plain, sugg)), sugg)
+	if !strings.HasSuffix(strings.Split(tight, "\n")[1], "Suggested") {
+		t.Error("panel should stay beside the wordmark with the minimum gap")
 	}
 	narrow := Compose(style.Plain, info, 90, sugg)
 	if strings.Contains(strings.Split(narrow, "\n")[1], "Suggested") {

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/banner"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
@@ -107,28 +108,9 @@ func runShell() error {
 		shellActive = false
 	}()
 
-	out := os.Stdout
-	p := style.For(out)
+	p := style.For(os.Stdout)
 	cols := terminalColumns()
-
-	// The session takes the whole window and starts with the banner at the
-	// top of its output pane. The animation plays first, in place, and is
-	// wiped again so leaving the session returns to a clean terminal.
-	var intro strings.Builder
-	if cols >= banner.Width {
-		net := banner.NewNetwork(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
-		final := net.Render(p, net.Final())
-		if os.Getenv("QUILLINK_NO_ANIMATION") == "" {
-			fmt.Fprintln(out)
-			playSkippable(net, out, p)
-			fmt.Fprintf(out, "\033[%dA\r\033[J", len(final)+1)
-		}
-		intro.WriteString("\n")
-		for _, line := range final {
-			intro.WriteString(line + "\n")
-		}
-	}
-	intro.WriteString(banner.Compose(p, bannerInfo(), cols, shellSuggestions()))
+	intro := introFrames(p, cols)
 
 	// Asked before the session owns the keyboard: the answer comes back
 	// on stdin.
@@ -156,7 +138,10 @@ func runShell() error {
 		Status:       sessionStatus,
 		RefreshAfter: changesStatus,
 		History:      shell.NewHistory(shellHistoryLimit),
-		Intro:        intro.String(),
+		Classify:     classifyShellWords,
+		IntroFrames:  intro,
+		IntroEvery:   banner.PlayDuration / time.Duration(len(intro)),
+		Corner:       banner.VersionLine(bannerInfo()),
 	})
 	if errors.Is(err, session.ErrInterrupted) {
 		zkSessionWipe()
@@ -165,23 +150,26 @@ func runShell() error {
 	return err
 }
 
-// playSkippable runs the animation; Ctrl-C skips to the final frame
-// instead of quitting.
-func playSkippable(net banner.Network, out *os.File, p style.Palette) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	defer signal.Stop(sig)
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-sig:
-			close(stop)
-		case <-done:
-		}
-	}()
-	net.Play(out, p, stop)
+// introFrames is the banner the session opens with, one entry per frame
+// of the network animation (just the last when it's off or the window is
+// too narrow for the network). The session plays them full-window, so
+// nothing is drawn into the terminal's own scrollback. The version line is
+// left out: the session pins it top right.
+func introFrames(p style.Palette, cols int) []string {
+	body := banner.Compose(p, banner.Info{}, cols, shellSuggestions())
+	if cols < banner.Width {
+		return []string{body}
+	}
+	net := banner.NewNetwork(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
+	frames := []banner.Frame{net.Final()}
+	if os.Getenv("QUILLINK_NO_ANIMATION") == "" {
+		frames = append(net.Frames(), net.Final())
+	}
+	out := make([]string, len(frames))
+	for i, f := range frames {
+		out[i] = "\n" + strings.Join(net.Render(p, f), "\n") + "\n" + body
+	}
+	return out
 }
 
 // runSessionLine runs one line typed in the session: a built-in, or a
@@ -236,7 +224,7 @@ func changesStatus(line string) bool {
 // signed in, and what's unlocked. It's read from local state plus one
 // /v1/status call, never more.
 func sessionStatus() session.Status {
-	st := session.Status{Workspace: workspaceLabel()}
+	st := session.Status{Workspace: workspaceLabel(), Production: resolveAPIBase() == client.DefaultAPIBase}
 	owner := zkSessionOwner()
 	if zkSession.get(owner) != nil {
 		st.Unlocked = append(st.Unlocked, "Zero-Knowledge")
@@ -292,6 +280,68 @@ func resetFlags(c *cobra.Command) {
 // suggestShellLine lists what can come at the word before the cursor --
 // a command or subcommand with its summary, or a flag of the command
 // typed so far with its usage -- for the session's dropdown and Tab.
+// classifyShellWords tells the session what each typed word is: command
+// names down the tree, flags, and arguments (including flag values). A
+// word where a subcommand is required but none matches is Unknown.
+func classifyShellWords(words []string) []session.Kind {
+	kinds := make([]session.Kind, len(words))
+	if len(words) == 0 {
+		return kinds
+	}
+	i := 0
+	if words[0] == rootCmd.Name() {
+		kinds[0] = session.Command
+		i = 1
+	}
+	if i < len(words) {
+		if _, ok := builtinDesc[words[i]]; ok && i == len(words)-1 {
+			kinds[i] = session.Command
+			return kinds
+		}
+	}
+	c := rootCmd
+	inPath := true
+	for ; i < len(words); i++ {
+		w := words[i]
+		if strings.HasPrefix(w, "-") && w != "-" {
+			kinds[i] = session.Flag
+			name, _, hasValue := strings.Cut(strings.TrimLeft(w, "-"), "=")
+			if f := lookupFlag(c, name, !strings.HasPrefix(w, "--")); f != nil && !hasValue && f.Value.Type() != "bool" && i+1 < len(words) {
+				i++
+				kinds[i] = session.Arg
+			}
+			continue
+		}
+		if inPath {
+			if next := findChild(c, w); next != nil {
+				kinds[i] = session.Command
+				c = next
+				continue
+			}
+			inPath = false
+			if c.HasAvailableSubCommands() && !c.Runnable() || c == rootCmd {
+				kinds[i] = session.Unknown
+				continue
+			}
+		}
+		kinds[i] = session.Arg
+	}
+	return kinds
+}
+
+func lookupFlag(c *cobra.Command, name string, short bool) *pflag.Flag {
+	if short {
+		if f := c.Flags().ShorthandLookup(name); f != nil {
+			return f
+		}
+		return c.InheritedFlags().ShorthandLookup(name)
+	}
+	if f := c.Flags().Lookup(name); f != nil {
+		return f
+	}
+	return c.InheritedFlags().Lookup(name)
+}
+
 func suggestShellLine(line string, pos int) ([]session.Suggestion, int) {
 	before := line[:pos]
 	fields := strings.Fields(before)

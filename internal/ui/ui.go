@@ -28,6 +28,7 @@ var (
 	Muted   color.Color = lipgloss.Color("#8B949E")
 	Subtle  color.Color = lipgloss.Color("#484F58")
 	Accent  color.Color = lipgloss.Color("#58A6FF")
+	Cyan    color.Color = lipgloss.Color("#39C5CF")
 	BrandFg color.Color = lipgloss.Color("#121212")
 )
 
