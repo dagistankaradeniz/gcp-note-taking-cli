@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestPaneScrollsAndFollows(t *testing.T) {
@@ -21,8 +22,8 @@ func TestPaneScrollsAndFollows(t *testing.T) {
 	if got := rows(m.View().Content); got != 20 {
 		t.Fatalf("view is %d rows, want the window's 20", got)
 	}
-	if first, _, _ := strings.Cut(m.View().Content, "\n"); !strings.Contains(first, "abc1234") {
-		t.Fatalf("top row should carry the version, got %q", first)
+	if first, _, _ := strings.Cut(m.View().Content, "\n"); !strings.Contains(first, "abc1234") || !strings.Contains(ansi.Strip(first), " Quillink ") {
+		t.Fatalf("top row should carry the name and version, got %q", first)
 	}
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})

@@ -1,8 +1,8 @@
 // Package session is the interactive `quillink` session: a full-window
-// view with the version pinned top right, command output in a scrollable
-// pane (mouse wheel, PgUp/PgDn) and an input box pinned to the bottom
-// with a status line under it. It
-// doesn't run commands itself; the Host does (the cmd package).
+// view with the app name pinned top left and the version top right,
+// command output in a scrollable pane (mouse wheel, PgUp/PgDn), and an
+// input box pinned to the bottom with a status line under it. It doesn't
+// run commands itself; the Host does (the cmd package).
 package session
 
 import (
@@ -570,11 +570,15 @@ func (m model) View() tea.View {
 	return v
 }
 
-// top is the row above the output pane: the version, right-aligned.
+// top is the row above the output pane: the app name on the left, as in
+// the banner ("ink" in the brand yellow), and the version on the right.
 func (m model) top() string {
 	w := max(m.width, 20)
-	c := ansi.Truncate(m.host.Corner, w-1, "…")
-	return ui.Render(strings.Repeat(" ", max(w-1-ansi.StringWidth(c), 0)) + ui.Fg(ui.Muted, c, false))
+	name := " " + ui.Fg(lipgloss.NoColor{}, "Quill", true) + ui.Fg(ui.Brand, "ink", true)
+	const nameW = 9
+	c := ansi.Truncate(m.host.Corner, max(w-nameW-2, 0), "…")
+	gap := max(w-nameW-1-ansi.StringWidth(c), 1)
+	return ui.Render(name + strings.Repeat(" ", gap) + ui.Fg(ui.Muted, c, false))
 }
 
 // bottom is everything under the output pane: spinner, input box,
