@@ -189,7 +189,7 @@ func runShell() error {
 			continue
 		case "lock":
 			if zkSessionWipe() {
-				fmt.Fprintln(out, p.Dim("Locked: the Zero-Knowledge key is cleared from memory."))
+				fmt.Fprintln(out, p.Dim("Locked: unlocked keys are cleared from memory."))
 			} else {
 				fmt.Fprintln(out, p.Dim("Nothing is unlocked."))
 			}

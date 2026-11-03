@@ -96,6 +96,23 @@ quillink note delete <id>     # Password: (interactive) -- refuses to delete wit
 
 `lock`/`unlock` use the exact same client-side AES-256-GCM + PBKDF2-SHA256 encryption as the web/mobile apps (`internal/notecrypto`, ported from `vaultCrypto.ts`) — the backend only ever receives an opaque ciphertext blob and a separately-derived verifier hash, never the password or plaintext body. A note locked from any client can be unlocked from any other. `note delete` on a locked note requires the password too: knowing you own a note isn't treated as enough to delete content you haven't proven you can actually read.
 
+A locked note's attachments decrypt the same way: `note attachment download <note-id> <attachment-id> --out file` asks for the note's password (or `--password-stdin`).
+
+### Vault
+
+```sh
+quillink vault unlock                 # Vault master password (interactive, or --vault-password-stdin)
+quillink vault list                   # notes and canvases, decrypted here
+quillink vault get <id>
+quillink vault export <id> --out note.md      # a canvas: --out board.png
+```
+
+The server checks only a verifier derived from the master password and returns the wrapped Vault key; the key is unwrapped and used on this device (`/v1/vault/*`, scope `vault:read`, read-only). In the interactive session the key stays in memory until 15 minutes idle, `vault lock` / `lock`, or exit; a one-off command asks each time. Vault notes' attachments download decrypted too. The password is never accepted as a flag value or env var.
+
+### Zero-Knowledge accounts
+
+Everything that reads content decrypts on this device with the account key (Recovery Passphrase + Secret Key, asked once per session). Where the server can't help because it only holds ciphertext, the CLI reads the account's notes and works it out locally: `tag list`/`tag show`, `note list --tags`, `note export` (same Markdown/NDJSON as the server's export, via `internal/notemd`, a mirror of the backend's `note_export.py`), graph/backlink titles and `note related` (the server's scoring, mirrored). Those scans stop at 5,000 notes and say so. `note search` stays unavailable for Zero-Knowledge accounts. Zero-Knowledge credentials are read-only, so `quillink login` can't be used yet: create a read-only token in the app.
+
 ### Pointing at a different environment
 
 ```sh
@@ -145,7 +162,7 @@ internal/output/      --json envelope + table rendering, exit codes
 internal/canvasrender/ draws a canvas to PNG/JPEG (Canvas v1 contract + renderer mirror)
 ```
 
-`canvas export` renders on this device, like the web's own PNG export (same framing, 2 px per unit, 8192 px cap), so a Zero-Knowledge canvas is decrypted here and the server does no rendering. `internal/canvasrender/contract.go` mirrors the web's `contract.ts` and is tested against an identical copy of the shared fixtures (`testdata/canvas_contract_fixtures.json`) — update both when the contract changes. Note/task cards show titles only (the web's "Show content" previews aren't drawn), text uses Lexend (SIL OFL 1.1, `internal/canvasrender/fonts/LEXEND_OFL.txt`) and Go Mono, and serif text falls back to Lexend; scripts neither font covers (e.g. CJK, Arabic) can't be drawn yet. Locked and Vault canvases can't be exported from the CLI.
+`canvas export` renders on this device, like the web's own PNG export (same framing, 2 px per unit, 8192 px cap), so a Zero-Knowledge canvas is decrypted here and the server does no rendering. `internal/canvasrender/contract.go` mirrors the web's `contract.ts` and is tested against an identical copy of the shared fixtures (`testdata/canvas_contract_fixtures.json`) — update both when the contract changes. Note/task cards show titles only (the web's "Show content" previews aren't drawn), text uses Lexend (SIL OFL 1.1, `internal/canvasrender/fonts/LEXEND_OFL.txt`) and Go Mono, and serif text falls back to Lexend; scripts neither font covers (e.g. CJK, Arabic) can't be drawn yet. Locked canvases can't be exported from the CLI; Vault canvases export with `vault export`.
 
 `internal/client/types.go` mirrors `app/models/note.py` / `app/models/folder.py` / `app/models/organization.py` / `app/models/api_access.py` in `gcp-note-taking-backend` field-for-field (snake_case JSON tags) — keep them in sync if those models change.
 

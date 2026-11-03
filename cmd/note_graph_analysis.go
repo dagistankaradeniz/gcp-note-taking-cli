@@ -41,7 +41,7 @@ var noteGraphAnalysisCmd = &cobra.Command{
 			return output.JSON(resp)
 		}
 		if resp.ZKUnavailable {
-			output.Table([]string{"NOTE"}, [][]string{{"unavailable for Zero-Knowledge accounts"}})
+			output.Table([]string{"NOTE"}, [][]string{{zkGraphOffText}})
 			return nil
 		}
 		if resp.CentralityApproximated || resp.CommunityFallbackUsed {

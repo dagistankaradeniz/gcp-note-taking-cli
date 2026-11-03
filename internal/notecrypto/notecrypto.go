@@ -194,3 +194,24 @@ func DecryptNoteBody(key []byte, encryptedBody string) (map[string]any, error) {
 	}
 	return body, nil
 }
+
+// DecryptString opens a JSON-stringified v1 envelope (accountCrypto.ts's
+// decryptString) -- a locked or Vault note's attachment metadata.
+func DecryptString(key []byte, encrypted string) (string, error) {
+	var payload EncryptedPayload
+	if err := json.Unmarshal([]byte(encrypted), &payload); err != nil {
+		return "", fmt.Errorf("parse encrypted payload: %w", err)
+	}
+	return decrypt(key, payload)
+}
+
+// EncryptString is DecryptString's inverse (accountCrypto.ts's
+// encryptString / vaultCrypto.ts's encryptNoteTitle).
+func EncryptString(key []byte, value string) (string, error) {
+	payload, err := encrypt(key, value)
+	if err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(payload)
+	return string(out), err
+}

@@ -13,16 +13,31 @@ var noteBacklinksCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var resp client.NoteBacklinksResponse
 		if err := c.Do("GET", "/v1/notes/"+args[0]+"/backlinks", nil, nil, &resp); err != nil {
 			return err
 		}
 
+		if dek != nil && !resp.ZKUnavailable && len(resp.Backlinks) > 0 {
+			scan, err := scanZk(c, dek, false)
+			if err != nil {
+				return err
+			}
+			titles := scan.titles()
+			for i := range resp.Backlinks {
+				resp.Backlinks[i].Title = orDefault(titles[resp.Backlinks[i].ID], zkTitleUnknown)
+				resp.Backlinks[i].Snippet = ""
+			}
+		}
 		if jsonOutput {
 			return output.JSON(resp)
 		}
 		if resp.ZKUnavailable {
-			output.Table([]string{"NOTE"}, [][]string{{"unavailable for Zero-Knowledge accounts"}})
+			output.Table([]string{"NOTE"}, [][]string{{zkGraphOffText}})
 			return nil
 		}
 		rows := make([][]string, 0, len(resp.Backlinks))

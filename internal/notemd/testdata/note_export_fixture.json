@@ -1,0 +1,187 @@
+{
+ "_comment": "Generated from gcp-note-taking-backend app/services/note_export.py tiptap_to_markdown; regenerate when it changes.",
+ "body": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "heading",
+    "attrs": {
+     "level": 2
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "Title"
+     }
+    ]
+   },
+   {
+    "type": "paragraph",
+    "content": [
+     {
+      "type": "text",
+      "text": "bold",
+      "marks": [
+       {
+        "type": "bold"
+       },
+       {
+        "type": "italic"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": " and "
+     },
+     {
+      "type": "text",
+      "text": "link",
+      "marks": [
+       {
+        "type": "link",
+        "attrs": {
+         "href": "https://x.y"
+        }
+       }
+      ]
+     },
+     {
+      "type": "hardBreak"
+     },
+     {
+      "type": "text",
+      "text": "next"
+     },
+     {
+      "type": "mathInline",
+      "attrs": {
+       "latex": "x^2"
+      }
+     },
+     {
+      "type": "noteLink",
+      "attrs": {
+       "id": "n1"
+      }
+     },
+     {
+      "type": "image",
+      "attrs": {
+       "alt": "a",
+       "src": "s.png"
+      }
+     }
+    ]
+   },
+   {
+    "type": "blockquote",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "quoted"
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "content": []
+     }
+    ]
+   },
+   {
+    "type": "codeBlock",
+    "attrs": {
+     "language": "go"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "a\nb"
+     }
+    ]
+   },
+   {
+    "type": "bulletList",
+    "content": [
+     {
+      "type": "listItem",
+      "content": [
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "one"
+         }
+        ]
+       },
+       {
+        "type": "orderedList",
+        "content": [
+         {
+          "type": "listItem",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "inner"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "listItem",
+      "content": []
+     }
+    ]
+   },
+   {
+    "type": "horizontalRule"
+   },
+   {
+    "type": "mathBlock",
+    "attrs": {
+     "latex": "E=mc^2"
+    }
+   },
+   {
+    "type": "heading",
+    "attrs": {
+     "level": 9
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "h9",
+      "marks": [
+       {
+        "type": "strike"
+       },
+       {
+        "type": "code"
+       },
+       {
+        "type": "highlight"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "unknown"
+   }
+  ]
+ },
+ "markdown": "## Title\n\n_**bold**_ and [link](https://x.y)  \nnext$x^2$[[note:n1]]![a](s.png)\n\n> quoted\n\n>\n\n```go\n\na\n\nb\n\n```\n\n- one\n\n  1. inner\n\n-\n\n---\n\n$$E=mc^2$$\n\n# ==`~~h9~~`=="
+}

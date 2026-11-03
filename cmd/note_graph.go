@@ -21,16 +21,23 @@ var noteGraphCmd = &cobra.Command{
 		q.Set("hops", strconv.Itoa(noteGraphHops))
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var resp client.NoteGraphResponse
 		if err := c.Do("GET", "/v1/notes/"+args[0]+"/graph", q, nil, &resp); err != nil {
 			return err
 		}
 
+		if err := fillZkGraphTitles(c, dek, resp.Nodes); err != nil {
+			return err
+		}
 		if jsonOutput {
 			return output.JSON(resp)
 		}
 		if resp.ZKUnavailable {
-			output.Table([]string{"NOTE"}, [][]string{{"unavailable for Zero-Knowledge accounts"}})
+			output.Table([]string{"NOTE"}, [][]string{{zkGraphOffText}})
 			return nil
 		}
 		printGraphNodeTable(resp.Nodes)

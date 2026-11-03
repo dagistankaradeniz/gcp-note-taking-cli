@@ -196,54 +196,67 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 
 const zkSessionIdle = 15 * time.Minute
 
-// zkSession is the interactive session's unlocked account key. owner ties
-// it to one API base + credential, so `login`, `logout` or `workspace use`
-// mid-session never reuse another account's key.
-var zkSession struct {
+// sessionKey is an unlocked key kept for the interactive session (the
+// Zero-Knowledge account key, the Vault key). owner ties it to one API
+// base + credential, so `login`, `logout` or `workspace use` mid-session
+// never reuse another account's key.
+type sessionKey struct {
 	sync.Mutex
 	owner string
-	dek   []byte
+	key   []byte
 	timer *time.Timer
 }
+
+var zkSession, vaultSession sessionKey
 
 func zkSessionOwner() string {
 	sum := sha256.Sum256([]byte(resolveAPIBase() + "\x00" + resolveToken()))
 	return hex.EncodeToString(sum[:])
 }
 
-// zkSessionGet returns the cached key for owner (and restarts the idle
-// timer), or nil. Outside the interactive session nothing is cached.
-func zkSessionGet(owner string) []byte {
-	zkSession.Lock()
-	defer zkSession.Unlock()
-	if !shellActive || zkSession.dek == nil || zkSession.owner != owner {
+// get returns the cached key for owner (and restarts the idle timer), or
+// nil. Outside the interactive session nothing is cached.
+func (s *sessionKey) get(owner string) []byte {
+	s.Lock()
+	defer s.Unlock()
+	if !shellActive || s.key == nil || s.owner != owner {
 		return nil
 	}
-	zkSession.timer.Reset(zkSessionIdle)
-	return zkSession.dek
+	s.timer.Reset(zkSessionIdle)
+	return s.key
 }
 
-func zkSessionPut(owner string, dek []byte) {
-	zkSessionWipe()
-	zkSession.Lock()
-	defer zkSession.Unlock()
-	zkSession.owner, zkSession.dek = owner, dek
-	zkSession.timer = time.AfterFunc(zkSessionIdle, func() { zkSessionWipe() })
+func (s *sessionKey) put(owner string, key []byte) {
+	s.wipe()
+	s.Lock()
+	defer s.Unlock()
+	s.owner, s.key = owner, key
+	s.timer = time.AfterFunc(zkSessionIdle, func() { s.wipe() })
 }
 
-// zkSessionWipe zeroes and drops the cached key; it reports whether one
-// was held.
-func zkSessionWipe() bool {
-	zkSession.Lock()
-	defer zkSession.Unlock()
-	if zkSession.timer != nil {
-		zkSession.timer.Stop()
-		zkSession.timer = nil
+// wipe zeroes and drops the cached key; it reports whether one was held.
+func (s *sessionKey) wipe() bool {
+	s.Lock()
+	defer s.Unlock()
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
 	}
-	held := zkSession.dek != nil
-	clear(zkSession.dek)
-	zkSession.dek, zkSession.owner = nil, ""
+	held := s.key != nil
+	clear(s.key)
+	s.key, s.owner = nil, ""
 	return held
+}
+
+func zkSessionGet(owner string) []byte      { return zkSession.get(owner) }
+func zkSessionPut(owner string, dek []byte) { zkSession.put(owner, dek) }
+
+// zkSessionWipe drops every key the session holds (account and Vault); it
+// reports whether any was held.
+func zkSessionWipe() bool {
+	zk := zkSession.wipe()
+	vault := vaultSession.wipe()
+	return zk || vault
 }
 
 // decryptNoteZK decrypts n's title/body/tags in place when dek is non-nil

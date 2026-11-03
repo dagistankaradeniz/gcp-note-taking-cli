@@ -18,4 +18,5 @@ var CLIScopes = []string{
 	"tags:read", "tags:write",
 	"tasks:read", "tasks:write",
 	"canvases:read",
+	"vault:read",
 }

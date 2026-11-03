@@ -314,7 +314,7 @@ func canvasState(cv client.Canvas) string {
 func unreadableReason(cv client.Canvas) string {
 	switch {
 	case cv.VaultEncrypted:
-		return "it's in the Vault -- open it in the app"
+		return "it's in the Vault -- use quillink vault export"
 	case cv.NoteEncrypted:
 		return "it's locked -- unlock it in the app first"
 	}

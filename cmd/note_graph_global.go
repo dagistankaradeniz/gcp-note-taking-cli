@@ -28,16 +28,23 @@ var noteGlobalGraphCmd = &cobra.Command{
 		q.Set("limit", strconv.Itoa(noteGlobalGraphLimit))
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
 		var resp client.NoteGraphGlobalResponse
 		if err := c.Do("GET", "/v1/notes/graph/global", q, nil, &resp); err != nil {
 			return err
 		}
 
+		if err := fillZkGraphTitles(c, dek, resp.Nodes); err != nil {
+			return err
+		}
 		if jsonOutput {
 			return output.JSON(resp)
 		}
 		if resp.ZKUnavailable {
-			output.Table([]string{"NOTE"}, [][]string{{"unavailable for Zero-Knowledge accounts"}})
+			output.Table([]string{"NOTE"}, [][]string{{zkGraphOffText}})
 			return nil
 		}
 		printGraphNodeTable(resp.Nodes)

@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notemd"
 	"github.com/spf13/cobra"
 )
 
@@ -44,21 +48,22 @@ default -- redirect or use --out.`,
 		}
 
 		c := newClient()
-		// Both export endpoints either render markdown server-side
-		// (impossible for ciphertext) or, for --all's ndjson default,
-		// would silently write out still-encrypted title/body/tags with
-		// no indication anything needs decrypting -- refuse clearly
-		// instead of either, without prompting for the Recovery
-		// Credential just to then say "not supported". Use `note get`/
-		// `note list` instead, which already decrypt locally.
-		if zk, err := isZkAccount(c); err != nil {
+		// A Zero-Knowledge account's notes are ciphertext to the server, so
+		// they're decrypted and rendered here instead (the same Markdown as
+		// the server's export, see internal/notemd).
+		dek, err := resolveZkDek(c)
+		if err != nil {
 			return err
-		} else if zk {
-			return fmt.Errorf("note export isn't supported yet for Zero-Knowledge accounts -- use note get/note list instead")
+		}
+		if dek != nil {
+			data, err := exportZk(c, dek, args)
+			if err != nil {
+				return err
+			}
+			return writeExport(data)
 		}
 
 		var data []byte
-		var err error
 		if noteExportAll {
 			if noteExportFormat == "" {
 				noteExportFormat = "ndjson"
@@ -79,12 +84,87 @@ default -- redirect or use --out.`,
 			return err
 		}
 
-		if noteExportOut != "" {
-			return os.WriteFile(noteExportOut, data, 0o600)
-		}
-		_, err = os.Stdout.Write(data)
-		return err
+		return writeExport(data)
 	},
+}
+
+func writeExport(data []byte) error {
+	if noteExportOut != "" {
+		return os.WriteFile(noteExportOut, data, 0o600)
+	}
+	_, err := os.Stdout.Write(data)
+	return err
+}
+
+// exportZk is note export for a Zero-Knowledge account: the notes are read
+// and decrypted here and written in the server export's own formats. A
+// note that doesn't decrypt stops the export rather than writing a
+// placeholder where the user's content should be.
+func exportZk(c *client.Client, dek []byte, args []string) ([]byte, error) {
+	if !noteExportAll {
+		var n client.Note
+		if err := c.Do("GET", "/v1/notes/"+url.PathEscape(args[0]), nil, nil, &n); err != nil {
+			return nil, err
+		}
+		if n.VaultEncrypted {
+			return nil, fmt.Errorf("this note is in the Vault -- use quillink vault export")
+		}
+		decryptNoteZK(dek, &n)
+		if n.Title == zkUnreadableText {
+			return nil, fmt.Errorf("note %s couldn't be decrypted on this device", n.ID)
+		}
+		return []byte(noteMarkdown(n, "\n")), nil
+	}
+
+	format := noteExportFormat
+	if format == "" {
+		format = "ndjson"
+	}
+	if format != "ndjson" && format != "markdown" {
+		return nil, fmt.Errorf("--format must be ndjson or markdown")
+	}
+	if noteExportMatch != "all" && noteExportMatch != "any" {
+		return nil, fmt.Errorf("--match must be all or any, got %q", noteExportMatch)
+	}
+	scan, err := scanZk(c, dek, false)
+	if err != nil {
+		return nil, err
+	}
+	defer scan.warnIfPartial()
+	notes := scan.notes
+	if len(noteExportTags) > 0 {
+		notes = scan.withTags(noteExportTags, noteExportMatch == "all")
+	}
+	var buf bytes.Buffer
+	for _, n := range notes {
+		// The server's bulk export leaves Vault notes out too.
+		if n.VaultEncrypted || (noteExportFolderID != "" && (n.FolderID == nil || *n.FolderID != noteExportFolderID)) {
+			continue
+		}
+		if n.Title == zkUnreadableText {
+			return nil, fmt.Errorf("note %s couldn't be decrypted on this device -- nothing was exported", n.ID)
+		}
+		if format == "markdown" {
+			buf.WriteString(noteMarkdown(n, "\n\n---\n\n"))
+			continue
+		}
+		line, err := json.Marshal(n)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes(), nil
+}
+
+// noteMarkdown is one note as the server's export writes it.
+func noteMarkdown(n client.Note, end string) string {
+	title := orDefault(n.Title, "Untitled")
+	if n.Locked || n.NoteEncrypted {
+		return "# " + title + "\n\n_(locked -- password required, not exported)_" + end
+	}
+	return "# " + title + "\n\n" + notemd.ToMarkdown(n.Body) + end
 }
 
 func init() {

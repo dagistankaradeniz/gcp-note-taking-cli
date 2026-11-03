@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,11 +24,30 @@ var noteRelatedCmd = &cobra.Command{
 		q.Set("limit", strconv.Itoa(noteRelatedLimit))
 
 		c := newClient()
+		dek, err := resolveZkDek(c)
+		if err != nil {
+			return err
+		}
+		// Always asked, also for ZK: the server applies the Pro plan check.
 		var resp client.NoteRelatedResponse
 		if err := c.Do("GET", "/v1/notes/"+args[0]+"/related", q, nil, &resp); err != nil {
 			return err
 		}
 
+		if dek != nil {
+			// The server can't read a ZK account's tags; score them here,
+			// never from its answer (older servers fill it with ciphertext).
+			scan, err := scanZk(c, dek, false)
+			if err != nil {
+				return err
+			}
+			notes, ok := scan.related(args[0], max(1, min(noteRelatedLimit, 20)))
+			if !ok {
+				return fmt.Errorf("note %s isn't among your active notes", args[0])
+			}
+			resp = client.NoteRelatedResponse{Notes: notes}
+			defer scan.warnIfPartial()
+		}
 		if jsonOutput {
 			return output.JSON(resp)
 		}

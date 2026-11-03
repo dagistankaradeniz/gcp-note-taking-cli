@@ -63,19 +63,7 @@ func unlockNoteBody(c *client.Client, id, password string) (map[string]any, erro
 	}
 
 	if note.NoteEncrypted {
-		if note.LockSalt == nil || note.LockIterations == nil {
-			return nil, fmt.Errorf("note is missing lock metadata")
-		}
-		verifierHash, err := notecrypto.DeriveVerifierHash(password, *note.LockSalt, *note.LockIterations)
-		if err != nil {
-			return nil, err
-		}
-		var resp client.NoteUnlockResponse
-		req := client.NoteUnlockRequest{VerifierHash: verifierHash}
-		if err := c.Do("POST", "/v1/notes/"+id+"/unlock", nil, req, &resp); err != nil {
-			return nil, err
-		}
-		key, err := notecrypto.DeriveKey(password, resp.Salt, resp.Iterations)
+		key, resp, err := unlockEncryptedNote(c, note, password)
 		if err != nil {
 			return nil, err
 		}
@@ -91,6 +79,26 @@ func unlockNoteBody(c *client.Client, id, password string) (map[string]any, erro
 		return nil, err
 	}
 	return resp.Body, nil
+}
+
+// unlockEncryptedNote proves the password to the server with a derived
+// verifier (never the password itself) and returns the note's lock key --
+// the key its body and attachments are encrypted with.
+func unlockEncryptedNote(c *client.Client, note client.Note, password string) ([]byte, client.NoteUnlockResponse, error) {
+	var resp client.NoteUnlockResponse
+	if note.LockSalt == nil || note.LockIterations == nil {
+		return nil, resp, fmt.Errorf("note is missing lock metadata")
+	}
+	verifierHash, err := notecrypto.DeriveVerifierHash(password, *note.LockSalt, *note.LockIterations)
+	if err != nil {
+		return nil, resp, err
+	}
+	req := client.NoteUnlockRequest{VerifierHash: verifierHash}
+	if err := c.Do("POST", "/v1/notes/"+note.ID+"/unlock", nil, req, &resp); err != nil {
+		return nil, resp, err
+	}
+	key, err := notecrypto.DeriveKey(password, resp.Salt, resp.Iterations)
+	return key, resp, err
 }
 
 var noteUnlockCmd = &cobra.Command{

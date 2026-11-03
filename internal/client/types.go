@@ -147,11 +147,12 @@ type NoteBacklinksResponse struct {
 }
 
 type NoteRelatedResult struct {
-	ID         string   `json:"id"`
-	Title      string   `json:"title"`
-	Type       string   `json:"type"`
-	Score      float64  `json:"score"`
-	SharedTags []string `json:"shared_tags"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Type            string   `json:"type"`
+	Score           float64  `json:"score"`
+	SharedTags      []string `json:"shared_tags"`
+	SharedLinkCount int      `json:"shared_link_count"`
 }
 
 type NoteRelatedResponse struct {
@@ -208,16 +209,20 @@ type GraphAnalysisResponse struct {
 // upload here yet). Mirrors app/models/attachment.py.
 
 type Attachment struct {
-	ID               string  `json:"id"`
-	NoteID           string  `json:"note_id"`
-	OriginalFilename string  `json:"original_filename"`
-	MimeType         string  `json:"mime_type"`
-	SizeBytes        int     `json:"size_bytes"`
-	Status           string  `json:"status"`
-	UploadedAt       *string `json:"uploaded_at"`
-	CreatedAt        string  `json:"created_at"`
-	ZKEncrypted      bool    `json:"zk_encrypted"`
-	LockEncrypted    bool    `json:"lock_encrypted"`
+	ID                string  `json:"id"`
+	NoteID            string  `json:"note_id"`
+	OriginalFilename  string  `json:"original_filename"`
+	MimeType          string  `json:"mime_type"`
+	SizeBytes         int     `json:"size_bytes"`
+	Status            string  `json:"status"`
+	UploadedAt        *string `json:"uploaded_at"`
+	CreatedAt         string  `json:"created_at"`
+	ZKEncrypted       bool    `json:"zk_encrypted"`
+	LockEncrypted     bool    `json:"lock_encrypted"`
+	EncryptedMetadata *string `json:"encrypted_metadata"`
+	WrappedFileDek    *string `json:"wrapped_file_dek"`
+	WrappedFileDekIV  *string `json:"wrapped_file_dek_iv"`
+	ZkUnreadable      bool    `json:"zk_unreadable,omitempty"`
 }
 
 type AttachmentListResponse struct {

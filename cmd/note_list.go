@@ -45,6 +45,10 @@ var noteListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if dek != nil && len(noteListTags) > 0 {
+			// The server can't filter by encrypted tags.
+			return printZkTagged(c, dek, noteListTags, noteListMatch == "all", noteListLimit, noteListFolderID)
+		}
 		var resp client.NoteListResponse
 		if err := c.Do("GET", "/v1/notes", q, nil, &resp); err != nil {
 			return err
