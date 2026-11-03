@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
@@ -18,7 +22,10 @@ import (
 // Recovery Credential (passphrase + Secret Key) is ever asked for. The
 // derived DEK lives in memory for this single process invocation only --
 // never written to the credential store, keychain, or any file. Every new
-// `quillink` invocation re-derives it from scratch.
+// `quillink` invocation re-derives it from scratch. Inside the interactive
+// session (bare `quillink`, interactive.go) it is kept for the session
+// instead, still in memory only, and wiped after zkSessionIdle without
+// use, on `lock`, and when the session ends.
 
 var (
 	zkPassphraseStdin bool
@@ -136,6 +143,10 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 	if status.KdfAlgorithm == nil || status.Salt == nil {
 		return nil, fmt.Errorf("account is Zero-Knowledge but has no key material on record -- contact support")
 	}
+	owner := zkSessionOwner()
+	if dek := zkSessionGet(owner); dek != nil {
+		return dek, nil
+	}
 
 	passphrase, err := resolveZkPassphrase()
 	if err != nil {
@@ -176,7 +187,63 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unwrap account key (check your Recovery Passphrase and Secret Key): %w", err)
 	}
+	if shellActive {
+		zkSessionPut(owner, dek)
+		fmt.Fprintf(os.Stderr, "Unlocked for this session. It locks after %d min idle, on `lock`, or on exit.\n", int(zkSessionIdle.Minutes()))
+	}
 	return dek, nil
+}
+
+const zkSessionIdle = 15 * time.Minute
+
+// zkSession is the interactive session's unlocked account key. owner ties
+// it to one API base + credential, so `login`, `logout` or `workspace use`
+// mid-session never reuse another account's key.
+var zkSession struct {
+	sync.Mutex
+	owner string
+	dek   []byte
+	timer *time.Timer
+}
+
+func zkSessionOwner() string {
+	sum := sha256.Sum256([]byte(resolveAPIBase() + "\x00" + resolveToken()))
+	return hex.EncodeToString(sum[:])
+}
+
+// zkSessionGet returns the cached key for owner (and restarts the idle
+// timer), or nil. Outside the interactive session nothing is cached.
+func zkSessionGet(owner string) []byte {
+	zkSession.Lock()
+	defer zkSession.Unlock()
+	if !shellActive || zkSession.dek == nil || zkSession.owner != owner {
+		return nil
+	}
+	zkSession.timer.Reset(zkSessionIdle)
+	return zkSession.dek
+}
+
+func zkSessionPut(owner string, dek []byte) {
+	zkSessionWipe()
+	zkSession.Lock()
+	defer zkSession.Unlock()
+	zkSession.owner, zkSession.dek = owner, dek
+	zkSession.timer = time.AfterFunc(zkSessionIdle, func() { zkSessionWipe() })
+}
+
+// zkSessionWipe zeroes and drops the cached key; it reports whether one
+// was held.
+func zkSessionWipe() bool {
+	zkSession.Lock()
+	defer zkSession.Unlock()
+	if zkSession.timer != nil {
+		zkSession.timer.Stop()
+		zkSession.timer = nil
+	}
+	held := zkSession.dek != nil
+	clear(zkSession.dek)
+	zkSession.dek, zkSession.owner = nil, ""
+	return held
 }
 
 // decryptNoteZK decrypts n's title/body/tags in place when dek is non-nil

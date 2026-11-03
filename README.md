@@ -41,6 +41,16 @@ quillink org members                   # Team plan: your organization's members
 quillink logout
 ```
 
+### Interactive session
+
+Run `quillink` with no arguments in a terminal to open a session: a short banner, then a `quillink ›` prompt where you type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`).
+
+- Up/down arrows recall earlier commands; Tab completes command, subcommand and flag names. History is kept in memory only, and lines that pass `--token` are never recorded.
+- A Zero-Knowledge account is unlocked once per session instead of per command. The key stays in memory only and is wiped after 15 minutes without use, on `lock`, and on `exit` / Ctrl-D.
+- `clear` clears the screen. Ctrl-C during the banner animation skips it.
+- Scripts are unaffected: when stdin or stdout isn't a terminal, or with `--json`, bare `quillink` prints help as before.
+- `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation. Help text is coloured on a terminal and plain when piped.
+
 Every command supports `--json` for scripting (stable, independently versioned output schema — see `internal/output`), and non-zero exit codes for common failure cases (`internal/output/exitcodes.go`): 2 = auth failure, 3 = not found, 4 = rate limited, 5 = invalid input.
 
 ### Auth for scripts/CI
