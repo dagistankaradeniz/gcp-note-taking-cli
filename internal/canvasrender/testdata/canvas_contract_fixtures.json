@@ -1,0 +1,216 @@
+{
+  "_comment": "Quillink Canvas v1 contract fixtures (CANVAS_UNIFICATION_PLAN.md). Identical copies live in every client repo (iOS Tests/CanvasContract, Android app/src/test/resources, web src/components/canvas/scene) -- change all copies together. `expected: null` means the element is dropped.",
+  "version": 1,
+  "elementCases": [
+    {
+      "name": "rectangle keeps valid fields, drops style and unknown data keys",
+      "input": {"id": "r1", "type": "shape", "x": 10, "y": 20, "w": 100, "h": 50, "rotation": 0, "style": {"strokeColor": "#FF0000"}, "data": {"shapeKind": "rectangle", "strokeColor": "#1F2937", "strokeWidth": 2, "fillColor": "#FDE68A", "excalidrawElement": "{}"}},
+      "expected": {"id": "r1", "type": "shape", "x": 10, "y": 20, "w": 100, "h": 50, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#1F2937", "strokeWidth": 2, "fillColor": "#FDE68A"}}
+    },
+    {
+      "name": "shape with empty data gets defaults",
+      "input": {"id": "r2", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {}},
+      "expected": {"id": "r2", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3}}
+    },
+    {
+      "name": "shape with invalid values is repaired",
+      "input": {"id": "r3", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "diamond", "strokeColor": "red", "strokeWidth": 999, "fillColor": "url(javascript:x)"}},
+      "expected": {"id": "r3", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 64}}
+    },
+    {
+      "name": "stroke width below minimum is clamped",
+      "input": {"id": "r4", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "ellipse", "strokeColor": "#abcdef", "strokeWidth": 0.1}},
+      "expected": {"id": "r4", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "ellipse", "strokeColor": "#abcdef", "strokeWidth": 0.5}}
+    },
+    {
+      "name": "line keeps its endpoints",
+      "input": {"id": "l1", "type": "shape", "x": 5, "y": 5, "w": 40, "h": 30, "rotation": 0, "style": {}, "data": {"shapeKind": "line", "strokeColor": "#000000", "strokeWidth": 3, "x1": 0, "y1": 30, "x2": 40, "y2": 0}},
+      "expected": {"id": "l1", "type": "shape", "x": 5, "y": 5, "w": 40, "h": 30, "rotation": 0, "style": {}, "data": {"shapeKind": "line", "strokeColor": "#000000", "strokeWidth": 3, "x1": 0, "y1": 30, "x2": 40, "y2": 0}}
+    },
+    {
+      "name": "partial endpoints are dropped",
+      "input": {"id": "l2", "type": "shape", "x": 5, "y": 5, "w": 40, "h": 30, "rotation": 0, "style": {}, "data": {"shapeKind": "line", "strokeColor": "#000000", "strokeWidth": 3, "x1": 0}},
+      "expected": {"id": "l2", "type": "shape", "x": 5, "y": 5, "w": 40, "h": 30, "rotation": 0, "style": {}, "data": {"shapeKind": "line", "strokeColor": "#000000", "strokeWidth": 3}}
+    },
+    {
+      "name": "endpoints on a rectangle are dropped",
+      "input": {"id": "l3", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3, "x1": 0, "y1": 0, "x2": 10, "y2": 10}},
+      "expected": {"id": "l3", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3}}
+    },
+    {
+      "name": "arrow keeps endpoints and has no shapeKind",
+      "input": {"id": "a1", "type": "arrow", "x": 0, "y": 0, "w": 100, "h": 20, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#1F2937", "strokeWidth": 2, "x1": 0, "y1": 0, "x2": 100, "y2": 20}},
+      "expected": {"id": "a1", "type": "arrow", "x": 0, "y": 0, "w": 100, "h": 20, "rotation": 0, "style": {}, "data": {"strokeColor": "#1F2937", "strokeWidth": 2, "x1": 0, "y1": 0, "x2": 100, "y2": 20}}
+    },
+    {
+      "name": "endpoints beyond the coordinate limit are clamped",
+      "input": {"id": "a2", "type": "arrow", "x": 0, "y": 0, "w": 100, "h": 20, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 2, "x1": -500000, "y1": 0, "x2": 500000, "y2": 20}},
+      "expected": {"id": "a2", "type": "arrow", "x": 0, "y": 0, "w": 100, "h": 20, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 2, "x1": -100000, "y1": 0, "x2": 100000, "y2": 20}}
+    },
+    {
+      "name": "ink points are cleaned: pressure clamped/defaulted, bad points dropped",
+      "input": {"id": "i1", "type": "ink", "x": 0, "y": 0, "w": 50, "h": 50, "rotation": 0, "style": {}, "data": {"strokeColor": "#EF4444", "strokeWidth": 6, "points": [{"x": 0, "y": 0, "pressure": 0.5}, {"x": 10, "y": 10, "pressure": 2.5}, {"x": 20, "y": 20}, {"x": 30, "y": 30, "pressure": -1}, [40, 40, 0.5], {"x": "50", "y": 50}, {"x": 50, "y": 50, "pressure": "hard"}]}},
+      "expected": {"id": "i1", "type": "ink", "x": 0, "y": 0, "w": 50, "h": 50, "rotation": 0, "style": {}, "data": {"strokeColor": "#EF4444", "strokeWidth": 6, "points": [{"x": 0, "y": 0, "pressure": 0.5}, {"x": 10, "y": 10, "pressure": 1}, {"x": 20, "y": 20, "pressure": 1}, {"x": 30, "y": 30, "pressure": 0}, {"x": 50, "y": 50, "pressure": 1}]}}
+    },
+    {
+      "name": "ink with no points keeps an empty list",
+      "input": {"id": "i2", "type": "ink", "x": 0, "y": 0, "w": 5, "h": 5, "rotation": 0, "style": {}, "data": {}},
+      "expected": {"id": "i2", "type": "ink", "x": 0, "y": 0, "w": 5, "h": 5, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 3, "points": []}}
+    },
+    {
+      "name": "text keeps its fields",
+      "input": {"id": "t1", "type": "text", "x": 1, "y": 2, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hello <b>world</b>", "fontSize": 20, "color": "#111827"}},
+      "expected": {"id": "t1", "type": "text", "x": 1, "y": 2, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hello <b>world</b>", "fontSize": 20, "color": "#111827"}}
+    },
+    {
+      "name": "text defaults and font size clamp",
+      "input": {"id": "t2", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"fontSize": 1, "color": "#12345"}},
+      "expected": {"id": "t2", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "", "fontSize": 6, "color": "#000000"}}
+    },
+    {
+      "name": "text with no font size gets the default",
+      "input": {"id": "t3", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 9000}},
+      "expected": {"id": "t3", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 400, "color": "#000000"}}
+    },
+    {
+      "name": "text keeps a serif or mono font",
+      "input": {"id": "t4", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 17, "color": "#000000", "fontFamily": "serif"}},
+      "expected": {"id": "t4", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 17, "color": "#000000", "fontFamily": "serif"}}
+    },
+    {
+      "name": "text keeps mono",
+      "input": {"id": "t5", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontFamily": "mono"}},
+      "expected": {"id": "t5", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 17, "color": "#000000", "fontFamily": "mono"}}
+    },
+    {
+      "name": "sans (the default) and unknown fonts are not stored",
+      "input": {"id": "t6", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontFamily": "Comic Sans"}},
+      "expected": {"id": "t6", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 17, "color": "#000000"}}
+    },
+    {
+      "name": "explicit sans is not stored",
+      "input": {"id": "t7", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontFamily": "sans"}},
+      "expected": {"id": "t7", "type": "text", "x": 0, "y": 0, "w": 120, "h": 30, "rotation": 0, "style": {}, "data": {"text": "Hi", "fontSize": 17, "color": "#000000"}}
+    },
+    {
+      "name": "png image keeps its data URL; mimeType comes from the prefix",
+      "input": {"id": "img1", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/png;base64,iVBORw0KGgo=", "mimeType": "image/gif"}},
+      "expected": {"id": "img1", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/png;base64,iVBORw0KGgo=", "mimeType": "image/png"}}
+    },
+    {
+      "name": "jpeg image without mimeType",
+      "input": {"id": "img2", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/jpeg;base64,/9j/4AAQ"}},
+      "expected": {"id": "img2", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/jpeg;base64,/9j/4AAQ", "mimeType": "image/jpeg"}}
+    },
+    {
+      "name": "webp image",
+      "input": {"id": "img3", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/webp;base64,UklGRg=="}},
+      "expected": {"id": "img3", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/webp;base64,UklGRg==", "mimeType": "image/webp"}}
+    },
+    {
+      "name": "image without the data: prefix is dropped",
+      "input": {"id": "img4", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "/9j/4AAQ"}},
+      "expected": null
+    },
+    {
+      "name": "svg image is dropped",
+      "input": {"id": "img5", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/svg+xml;base64,PHN2Zz4="}},
+      "expected": null
+    },
+    {
+      "name": "remote image URL is dropped",
+      "input": {"id": "img6", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "https://tracker.example/pixel.png"}},
+      "expected": null
+    },
+    {
+      "name": "image with non-base64 payload characters is dropped",
+      "input": {"id": "img7", "type": "image", "x": 0, "y": 0, "w": 64, "h": 64, "rotation": 0, "style": {}, "data": {"dataUrl": "data:image/png;base64,abc\"><script>"}},
+      "expected": null
+    },
+    {
+      "name": "note ref with show_content",
+      "input": {"id": "n1", "type": "note_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"note_id": "AbC_123-x", "show_content": true, "title": "cached"}},
+      "expected": {"id": "n1", "type": "note_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"note_id": "AbC_123-x", "show_content": true}}
+    },
+    {
+      "name": "show_content that isn't true is omitted",
+      "input": {"id": "n2", "type": "note_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"note_id": "abc", "show_content": "yes"}},
+      "expected": {"id": "n2", "type": "note_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"note_id": "abc"}}
+    },
+    {
+      "name": "note ref with a path-like id is dropped",
+      "input": {"id": "n3", "type": "note_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"note_id": "../admin"}},
+      "expected": null
+    },
+    {
+      "name": "task ref",
+      "input": {"id": "k1", "type": "task_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"task_id": "task42"}},
+      "expected": {"id": "k1", "type": "task_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {"task_id": "task42"}}
+    },
+    {
+      "name": "task ref without an id is dropped",
+      "input": {"id": "k2", "type": "task_ref", "x": 0, "y": 0, "w": 220, "h": 90, "rotation": 0, "style": {}, "data": {}},
+      "expected": null
+    },
+    {
+      "name": "unknown element type is dropped",
+      "input": {"id": "u1", "type": "diamond", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {}},
+      "expected": null
+    },
+    {
+      "name": "element id with invalid characters is dropped",
+      "input": {"id": "a b", "type": "text", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"text": "x"}},
+      "expected": null
+    },
+    {
+      "name": "geometry is clamped and rotation normalised to [0, 360)",
+      "input": {"id": "g1", "type": "text", "x": 5000000, "y": -5000000, "w": 0, "h": 200000, "rotation": -90, "style": {}, "data": {"text": "x", "fontSize": 17, "color": "#000000"}},
+      "expected": {"id": "g1", "type": "text", "x": 1000000, "y": -1000000, "w": 1, "h": 100000, "rotation": 270, "style": {}, "data": {"text": "x", "fontSize": 17, "color": "#000000"}}
+    },
+    {
+      "name": "rotation above 360 wraps; negative size becomes 1",
+      "input": {"id": "g2", "type": "text", "x": 0, "y": 0, "w": -5, "h": 10, "rotation": 725, "style": {}, "data": {"text": "x", "fontSize": 17, "color": "#000000"}},
+      "expected": {"id": "g2", "type": "text", "x": 0, "y": 0, "w": 1, "h": 10, "rotation": 5, "style": {}, "data": {"text": "x", "fontSize": 17, "color": "#000000"}}
+    },
+    {
+      "name": "numbers sent as strings are treated as missing",
+      "input": {"id": "g3", "type": "shape", "x": "10", "y": 0, "w": 10, "h": 10, "rotation": "45", "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": "4"}},
+      "expected": {"id": "g3", "type": "shape", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3}}
+    }
+  ],
+  "listCases": [
+    {
+      "name": "duplicate ids keep the first; invalid elements are removed; order is kept",
+      "input": [
+        {"id": "b", "type": "text", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"text": "first"}},
+        {"id": "x", "type": "frame", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {}},
+        {"id": "a", "type": "text", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"text": "second"}},
+        {"id": "b", "type": "text", "x": 0, "y": 0, "w": 10, "h": 10, "rotation": 0, "style": {}, "data": {"text": "dupe"}}
+      ],
+      "expectedIds": ["b", "a"]
+    }
+  ],
+  "resizeCases": [
+    {
+      "name": "ink points scale with the box",
+      "input": {"id": "i1", "type": "ink", "x": 0, "y": 0, "w": 10, "h": 20, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 3, "points": [{"x": 0, "y": 0, "pressure": 1}, {"x": 10, "y": 20, "pressure": 0.5}]}},
+      "w": 20,
+      "h": 10,
+      "expected": {"id": "i1", "type": "ink", "x": 0, "y": 0, "w": 20, "h": 10, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 3, "points": [{"x": 0, "y": 0, "pressure": 1}, {"x": 20, "y": 10, "pressure": 0.5}]}}
+    },
+    {
+      "name": "arrow endpoints scale with the box",
+      "input": {"id": "a1", "type": "arrow", "x": 0, "y": 0, "w": 100, "h": 50, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 2, "x1": 0, "y1": 50, "x2": 100, "y2": 0}},
+      "w": 50,
+      "h": 100,
+      "expected": {"id": "a1", "type": "arrow", "x": 0, "y": 0, "w": 50, "h": 100, "rotation": 0, "style": {}, "data": {"strokeColor": "#000000", "strokeWidth": 2, "x1": 0, "y1": 100, "x2": 50, "y2": 0}}
+    },
+    {
+      "name": "rectangle only changes its size",
+      "input": {"id": "r1", "type": "shape", "x": 3, "y": 4, "w": 10, "h": 10, "rotation": 30, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3}},
+      "w": 30,
+      "h": 40,
+      "expected": {"id": "r1", "type": "shape", "x": 3, "y": 4, "w": 30, "h": 40, "rotation": 30, "style": {}, "data": {"shapeKind": "rectangle", "strokeColor": "#000000", "strokeWidth": 3}}
+    }
+  ]
+}

@@ -43,6 +43,10 @@ quillink task done <id>                # task reopen <id> to undo; --date for on
 quillink task delete <id>              # moves it to the trash; task restore <id> brings it back
 quillink task category list
 
+quillink canvas list                   # --folder <id>, --tag <tag>, --trashed
+quillink canvas get <id>               # title, state and what it contains
+quillink canvas export <id> --out board.png   # or .jpg; --scale 1, --dark, --background "#ffffff"; --out - for stdout
+
 quillink org info                      # Team plan: your organization's plan/seats/status
 quillink org members                   # Team plan: your organization's members
 
@@ -138,7 +142,10 @@ internal/client/      /v1 + /api/oauth HTTP client, RFC 7807 error handling, wir
 internal/auth/        credential storage (OS keychain + file fallback), device-grant flow
 internal/workspace/    named api-base/client_id registry (~/.config/quillink/workspaces.json)
 internal/output/      --json envelope + table rendering, exit codes
+internal/canvasrender/ draws a canvas to PNG/JPEG (Canvas v1 contract + renderer mirror)
 ```
+
+`canvas export` renders on this device, like the web's own PNG export (same framing, 2 px per unit, 8192 px cap), so a Zero-Knowledge canvas is decrypted here and the server does no rendering. `internal/canvasrender/contract.go` mirrors the web's `contract.ts` and is tested against an identical copy of the shared fixtures (`testdata/canvas_contract_fixtures.json`) — update both when the contract changes. Note/task cards show titles only (the web's "Show content" previews aren't drawn), text uses Lexend (SIL OFL 1.1, `internal/canvasrender/fonts/LEXEND_OFL.txt`) and Go Mono, and serif text falls back to Lexend; scripts neither font covers (e.g. CJK, Arabic) can't be drawn yet. Locked and Vault canvases can't be exported from the CLI.
 
 `internal/client/types.go` mirrors `app/models/note.py` / `app/models/folder.py` / `app/models/organization.py` / `app/models/api_access.py` in `gcp-note-taking-backend` field-for-field (snake_case JSON tags) — keep them in sync if those models change.
 
