@@ -19,7 +19,7 @@ Requires Go 1.26+.
 ## Usage
 
 ```sh
-quillink login                         # device-grant browser login
+quillink login                         # device-grant browser login (opens the sign-in page; --no-browser to just print it)
 quillink whoami
 
 quillink note create "Title" --content "Body text"
@@ -112,6 +112,8 @@ The server checks only a verifier derived from the master password and returns t
 ### Zero-Knowledge accounts
 
 Everything that reads content decrypts on this device with the account key (Recovery Passphrase + Secret Key, asked once per session). Where the server can't help because it only holds ciphertext, the CLI reads the account's notes and works it out locally: `tag list`/`tag show`, `note list --tags`, `note export` (same Markdown/NDJSON as the server's export, via `internal/notemd`, a mirror of the backend's `note_export.py`), graph/backlink titles and `note related` (the server's scoring, mirrored). Those scans stop at 5,000 notes and say so. Writes are encrypted here too: `note create`/`update`, `task create`/`update` and `folder create`/`update` seal titles, content, tags and names (envelope v2, the web's format) before sending, and the server refuses plain text from a Zero-Knowledge account. Changing only some fields of an item needs the existing ones to decrypt on this device; otherwise the CLI refuses rather than mixing keys. Zero-Knowledge tasks can't have due dates or categories. `quillink login` and write tokens work for Zero-Knowledge accounts; `note search` stays unavailable.
+
+`login` and `workspace login` open the sign-in page in your browser with the code filled in. They don't over SSH or without a desktop session, and `--no-browser` or `QUILLINK_NO_BROWSER=1` turns it off; the link and code are always printed too.
 
 ### Pointing at a different environment
 

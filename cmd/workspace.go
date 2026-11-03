@@ -80,7 +80,7 @@ var workspaceLoginCmd = &cobra.Command{
 				cid = resolveClientID()
 			}
 			c := client.New(w.APIBase, "")
-			token, err = auth.Login(c, cid, func(format string, a ...any) {
+			token, err = auth.Login(c, cid, shouldOpenBrowser(), func(format string, a ...any) {
 				fmt.Printf(format, a...)
 			})
 			if err != nil {
@@ -172,6 +172,7 @@ func init() {
 	workspaceAddCmd.Flags().StringVar(&wsAddAPIBase, "api-base", "", "API base URL for this workspace (required)")
 	workspaceAddCmd.Flags().StringVar(&wsAddClientID, "client-id", "", "OAuth client_id for this workspace's login (default: global --client-id/$QUILLINK_CLIENT_ID/build-time default)")
 
+	workspaceLoginCmd.Flags().BoolVar(&noBrowser, "no-browser", false, "print the sign-in link instead of opening the browser")
 	workspaceCmd.AddCommand(workspaceAddCmd, workspaceLoginCmd, workspaceUseCmd, workspaceListCmd, workspaceRemoveCmd)
 	rootCmd.AddCommand(workspaceCmd)
 }

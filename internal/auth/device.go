@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/browser"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 )
 
@@ -11,8 +12,9 @@ import (
 // a device code, print it for the user, then poll until the browser step
 // completes. Mirrors `gh auth login` / `gcloud auth login`. clientID is
 // resolved by the caller (see cmd.resolveClientID) -- this package doesn't
-// know about flags/env vars.
-func Login(c *client.Client, clientID string, print func(format string, a ...any)) (string, error) {
+// know about flags/env vars. With openBrowser the sign-in page opens on
+// its own, code filled in; the link is printed either way.
+func Login(c *client.Client, clientID string, openBrowser bool, print func(format string, a ...any)) (string, error) {
 	var codeResp client.DeviceCodeResponse
 	err := c.PostPublic("/api/oauth/device/code", client.DeviceCodeRequest{
 		ClientID: clientID,
@@ -23,7 +25,11 @@ func Login(c *client.Client, clientID string, print func(format string, a ...any
 	}
 
 	print("Go to %s and enter code: %s\n", codeResp.VerificationURI, codeResp.UserCode)
-	print("Or open %s directly.\n", codeResp.VerificationURIComplete)
+	if openBrowser && browser.Open(codeResp.VerificationURIComplete) == nil {
+		print("Opened your browser. Check the code there matches this one.\n")
+	} else {
+		print("Or open %s directly.\n", codeResp.VerificationURIComplete)
+	}
 	print("Waiting for confirmation...\n")
 
 	interval := time.Duration(codeResp.Interval) * time.Second
