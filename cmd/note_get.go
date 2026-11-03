@@ -13,7 +13,10 @@ var noteGetIncludeSensitive bool
 var noteGetCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Fetch a single note",
-	Args:  cobra.ExactArgs(1),
+	Example: `  quillink note get <id>
+  quillink note get <id> --output yaml
+  quillink note get <id> --out note.md`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
 		dek, err := resolveZkDek(c)

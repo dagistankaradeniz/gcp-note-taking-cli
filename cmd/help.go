@@ -23,7 +23,7 @@ const usageTemplate = `{{heading "Usage:"}}{{if .Runnable}}
   {{cmdName .CommandPath}} {{arg "[command]"}}{{end}}{{if .HasExample}}
 
 {{heading "Examples:"}}
-{{.Example}}{{end}}{{if .HasAvailableSubCommands}}
+{{examples .}}{{end}}{{if .HasAvailableSubCommands}}
 
 {{heading "Available Commands:"}}{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
   {{cmdName (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
@@ -44,6 +44,7 @@ func init() {
 	cobra.AddTemplateFunc("arg", func(s string) string { return pal().Arg(s) })
 	cobra.AddTemplateFunc("flag", func(s string) string { return pal().Flag(s) })
 	cobra.AddTemplateFunc("useLine", func(c *cobra.Command) string { return colorUseLine(pal(), c) })
+	cobra.AddTemplateFunc("examples", func(c *cobra.Command) string { return colorExamples(pal(), c.Example) })
 	cobra.AddTemplateFunc("flagList", func(fs *pflag.FlagSet) string { return colorFlagUsages(pal(), fs.FlagUsages()) })
 	rootCmd.SetUsageTemplate(usageTemplate)
 }
@@ -88,6 +89,41 @@ func colorFlagUsages(p style.Palette, usages string) string {
 			typ = " " + p.Dim(m[3][1:])
 		}
 		lines[i] = m[1] + p.Flag(m[2]) + typ + m[4]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// colorExamples colours each example line like the usage line: the
+// command path yellow, <placeholders> cyan, flags green.
+func colorExamples(p style.Palette, examples string) string {
+	lines := strings.Split(examples, "\n")
+	for i, l := range lines {
+		trimmed := strings.TrimLeft(l, " ")
+		lead := l[:len(l)-len(trimmed)]
+		words := strings.Split(trimmed, " ")
+		if len(words) == 0 || words[0] != rootCmd.Name() {
+			continue
+		}
+		c := rootCmd
+		inPath := true
+		for j, w := range words {
+			switch {
+			case j == 0:
+				words[j] = p.Brand(w)
+			case inPath && findChild(c, w) != nil:
+				c = findChild(c, w)
+				words[j] = p.Brand(w)
+			case strings.HasPrefix(w, "-"):
+				inPath = false
+				words[j] = p.Flag(w)
+			case strings.HasPrefix(w, "<"):
+				inPath = false
+				words[j] = p.Arg(w)
+			default:
+				inPath = false
+			}
+		}
+		lines[i] = lead + strings.Join(words, " ")
 	}
 	return strings.Join(lines, "\n")
 }

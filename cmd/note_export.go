@@ -27,6 +27,9 @@ var (
 var noteExportCmd = &cobra.Command{
 	Use:   "export [id]",
 	Short: "Export a note (or, with --all, every note) as Markdown or NDJSON",
+	Example: `  quillink note export <id> --out note.md
+  quillink note export --all --format markdown --out notes.md
+  quillink note export --all --tags work --out work.ndjson`,
 	Long: `Export a single note as a standalone Markdown file, or every active note
 at once with --all (Markdown: one file's worth of "# Title" blocks; NDJSON:
 one full note object per line, for backups/scripting). Writes to stdout by

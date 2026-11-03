@@ -13,10 +13,26 @@ import (
 
 const reset = "\033[0m"
 
+// captured is a pipe the interactive session reads command output from
+// before showing it on the terminal (or in its pager); it counts as a
+// terminal so colours survive the detour.
+var captured *os.File
+
+// TreatAsTerminal marks f as standing in for the terminal (nil clears it).
+func TreatAsTerminal(f *os.File) { captured = f }
+
+// IsTerminal reports whether f is a terminal, or stands in for one.
+func IsTerminal(f *os.File) bool {
+	return (captured != nil && f == captured) || term.IsTerminal(int(f.Fd()))
+}
+
 // Enabled reports whether colour may be written to f.
 func Enabled(f *os.File) bool {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false
+	}
+	if captured != nil && f == captured {
+		return true
 	}
 	if !term.IsTerminal(int(f.Fd())) {
 		return false

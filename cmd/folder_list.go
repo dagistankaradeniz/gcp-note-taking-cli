@@ -13,6 +13,8 @@ var folderListIncludeTrashed bool
 var folderListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List folders",
+	Example: `  quillink folder list
+  quillink folder list --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
 		dek, err := resolveZkDek(c)

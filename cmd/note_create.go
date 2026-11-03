@@ -21,7 +21,9 @@ var (
 var noteCreateCmd = &cobra.Command{
 	Use:   "create <title>",
 	Short: "Create a note",
-	Args:  cobra.ExactArgs(1),
+	Example: `  quillink note create "Weekly review" --content "Wins, blockers, next steps"
+  quillink note create "Ideas" --tags work,q4 --pinned`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		req := client.NoteCreateRequest{
 			Title:      args[0],

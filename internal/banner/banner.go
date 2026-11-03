@@ -56,18 +56,72 @@ func VersionLine(info Info) string {
 	return strings.Join(parts, " · ")
 }
 
+// line is one rendered row and its visible width (escape codes excluded).
+type line struct {
+	text  string
+	width int
+}
+
+// Suggestion is one row of the suggested-commands panel.
+type Suggestion struct {
+	Command, Args, Desc string
+}
+
+// panelGap is the space between the wordmark block and the panel.
+const panelGap = 10
+
 // Header is the wordmark, slogan and version line, ending in a newline.
 // Below Width columns it falls back to a one-line wordmark.
 func Header(p style.Palette, info Info, columns int) string {
+	return Compose(p, info, columns, nil)
+}
+
+// Compose is the header with the suggested-commands panel: beside the
+// wordmark (neofetch style) when the terminal is wide enough, otherwise
+// listed below it.
+func Compose(p style.Palette, info Info, columns int, suggestions []Suggestion) string {
+	left := headerLines(p, info, columns)
+	panel := panelLines(p, suggestions)
 	var b strings.Builder
-	version := VersionLine(info)
-	if columns < Width {
-		b.WriteString(indent + p.Bold("Quillink") + " " + p.Badge(" BETA ") + "\n")
-		b.WriteString(indent + Slogan + "\n\n")
-		b.WriteString(indent + p.Dim(version) + "\n")
+	b.WriteString("\n")
+	if len(panel) > 0 && columns >= Width && columns >= Width+panelGap+maxWidth(panel) {
+		for i := 0; i < max(len(left), len(panel)); i++ {
+			l := line{}
+			if i < len(left) {
+				l = left[i]
+			}
+			if i >= len(panel) {
+				b.WriteString(strings.TrimRight(l.text, " ") + "\n")
+				continue
+			}
+			b.WriteString(l.text + strings.Repeat(" ", Width+panelGap-l.width) + panel[i].text + "\n")
+		}
 		return b.String()
 	}
-	b.WriteString("\n")
+	for _, l := range left {
+		b.WriteString(l.text + "\n")
+	}
+	if len(panel) > 0 {
+		b.WriteString("\n")
+		for _, l := range panel {
+			b.WriteString(indent + l.text + "\n")
+		}
+	}
+	return b.String()
+}
+
+func headerLines(p style.Palette, info Info, columns int) []line {
+	version := VersionLine(info)
+	vw := utf8.RuneCountInString(version)
+	if columns < Width {
+		return []line{
+			{indent + p.Bold("Quillink") + " " + p.Badge(" BETA "), len(indent) + 15},
+			{indent + Slogan, len(indent) + utf8.RuneCountInString(Slogan)},
+			{},
+			{indent + p.Dim(version), len(indent) + vw},
+		}
+	}
+	var out []line
 	for row := range glyphQ {
 		var quill, ink strings.Builder
 		for _, g := range [][]string{glyphQ, glyphU, glyphI, glyphL, glyphL} {
@@ -76,45 +130,53 @@ func Header(p style.Palette, info Info, columns int) string {
 		for _, g := range [][]string{glyphI, glyphN, glyphK} {
 			ink.WriteString(g[row])
 		}
-		b.WriteString(indent + quill.String() + p.BrandBold(ink.String()))
+		text := indent + quill.String() + p.BrandBold(ink.String())
+		w := len(indent) + utf8.RuneCountInString(quill.String()+ink.String())
 		if row == len(glyphQ)-1 {
-			b.WriteString("  " + p.Badge(" BETA "))
+			text += "  " + p.Badge(" BETA ")
+			w += 8
 		}
-		b.WriteString("\n")
+		out = append(out, line{text, w})
 	}
-	b.WriteString("\n" + indent + Slogan + "\n\n\n")
-	pad := Width - utf8.RuneCountInString(version)
-	if pad < len(indent) {
-		pad = len(indent)
-	}
-	b.WriteString(strings.Repeat(" ", pad) + p.Dim(version) + "\n")
-	return b.String()
+	pad := max(Width-vw, len(indent))
+	return append(out,
+		line{},
+		line{indent + Slogan, len(indent) + utf8.RuneCountInString(Slogan)},
+		line{},
+		line{},
+		line{strings.Repeat(" ", pad) + p.Dim(version), pad + vw},
+	)
 }
 
-// Suggested is the "Suggested:" row, wrapped to fit columns, ending in a
-// newline.
-func Suggested(p style.Palette, commands []string, columns int) string {
-	const label = "Suggested: "
-	sep := " · "
-	limit := columns
-	var b strings.Builder
-	b.WriteString(indent + p.Dim(label))
-	used := len(indent) + len(label)
-	lead := strings.Repeat(" ", used)
-	for i, c := range commands {
-		w := utf8.RuneCountInString(c)
-		if i > 0 {
-			if used+len(sep)+w > limit {
-				b.WriteString("\n" + lead)
-				used = len(lead)
-			} else {
-				b.WriteString(p.Dim(sep))
-				used += utf8.RuneCountInString(sep)
-			}
-		}
-		b.WriteString(p.Brand(c))
-		used += w
+// panelLines renders the bold "Suggested" heading and one row per
+// command: command yellow, arguments cyan, description dim, aligned.
+func panelLines(p style.Palette, suggestions []Suggestion) []line {
+	if len(suggestions) == 0 {
+		return nil
 	}
-	b.WriteString("\n")
-	return b.String()
+	col := 0
+	for _, s := range suggestions {
+		col = max(col, utf8.RuneCountInString(strings.TrimSpace(s.Command+" "+s.Args)))
+	}
+	col += 2
+	out := []line{{p.Bold("Suggested"), 9}}
+	for _, s := range suggestions {
+		plain := strings.TrimSpace(s.Command + " " + s.Args)
+		text := p.Brand(s.Command)
+		if s.Args != "" {
+			text += " " + p.Arg(s.Args)
+		}
+		pad := col - utf8.RuneCountInString(plain)
+		text += strings.Repeat(" ", pad) + p.Dim(s.Desc)
+		out = append(out, line{text, col + utf8.RuneCountInString(s.Desc)})
+	}
+	return out
+}
+
+func maxWidth(lines []line) int {
+	w := 0
+	for _, l := range lines {
+		w = max(w, l.width)
+	}
+	return w
 }

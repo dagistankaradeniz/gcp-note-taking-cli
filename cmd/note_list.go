@@ -23,6 +23,10 @@ var (
 var noteListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List notes",
+	Example: `  quillink note list
+  quillink note list --tags work,urgent --match any
+  quillink note list --folder <folder-id> --limit 20
+  quillink note list --output csv --out notes.csv`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		q := url.Values{}
 		if noteListFolderID != "" {

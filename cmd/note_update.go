@@ -21,7 +21,9 @@ var (
 var noteUpdateCmd = &cobra.Command{
 	Use:   "update <id>",
 	Short: "Update a note's title, content, folder, or tags",
-	Args:  cobra.ExactArgs(1),
+	Example: `  quillink note update <id> --title "Weekly review (final)"
+  quillink note update <id> --tags work,q4 --pinned`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		req := client.NoteUpdateRequest{}
 		flags := cmd.Flags()

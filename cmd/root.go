@@ -29,7 +29,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := finishOutput(rootCmd.Execute()); err != nil {
 		exitCode := output.ExitGeneral
 		if apiErr, ok := err.(*client.APIError); ok {
 			exitCode = output.CodeForStatus(apiErr.Status)

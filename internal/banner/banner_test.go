@@ -55,17 +55,23 @@ func TestHeaderCompactWhenNarrow(t *testing.T) {
 	}
 }
 
-func TestSuggestedWraps(t *testing.T) {
-	cmds := []string{"note list", "note search", "note create", "help", "logout", "exit"}
-	one := Suggested(style.Plain, cmds, 120)
-	if strings.Count(one, "\n") != 1 {
-		t.Errorf("expected one row at full width: %q", one)
+func TestComposePanelBesideOrBelow(t *testing.T) {
+	sugg := []Suggestion{{"note list", "", "your recent notes"}, {"note get", "<id>", "open a note"}, {"exit", "", "leave the session"}}
+	info := Info{Version: "1.4.0"}
+	wide := Compose(style.Plain, info, 140, sugg)
+	lines := strings.Split(wide, "\n")
+	if !strings.Contains(lines[1], "██") || !strings.HasSuffix(lines[1], "Suggested") {
+		t.Fatalf("panel not beside the wordmark: %q", lines[1])
 	}
-	wrapped := Suggested(style.Plain, cmds, 40)
-	for _, l := range strings.Split(strings.TrimRight(wrapped, "\n"), "\n") {
-		if n := utf8.RuneCountInString(l); n > 40 {
-			t.Errorf("row wider than 40: %d %q", n, l)
-		}
+	if idx := strings.Index(lines[3], "note get <id>"); utf8.RuneCountInString(lines[3][:idx]) != Width+panelGap {
+		t.Errorf("panel column misaligned: %q", lines[3])
+	}
+	narrow := Compose(style.Plain, info, 90, sugg)
+	if strings.Contains(strings.Split(narrow, "\n")[1], "Suggested") {
+		t.Error("panel should move below the wordmark when it doesn't fit")
+	}
+	if !strings.Contains(narrow, "  Suggested\n") {
+		t.Errorf("panel missing below: %q", narrow)
 	}
 }
 

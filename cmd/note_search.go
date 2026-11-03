@@ -25,7 +25,10 @@ var (
 var noteSearchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search notes by title/content (server-side, full account)",
-	Args:  cobra.ExactArgs(1),
+	Example: `  quillink note search "weekly review"
+  quillink note search budget --tags work
+  quillink note search budget --output md --out results.md`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := newClient()
 		var resp client.NoteListResponse

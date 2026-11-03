@@ -49,8 +49,9 @@ var noteAttachmentListCmd = &cobra.Command{
 var noteAttachmentDownloadOut string
 
 var noteAttachmentDownloadCmd = &cobra.Command{
-	Use:   "download <note-id> <attachment-id>",
-	Short: "Download an attachment",
+	Use:     "download <note-id> <attachment-id>",
+	Short:   "Download an attachment",
+	Example: `  quillink note attachment download <note-id> <attachment-id> --out report.pdf`,
 	Long: `Downloads an attachment's file bytes. A ZK/Vault/lock-encrypted note's
 attachment downloads as still-opaque ciphertext -- this CLI has no decrypt
 path for it, same as it has none for a locked note's body.`,

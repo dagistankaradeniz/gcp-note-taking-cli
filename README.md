@@ -43,13 +43,25 @@ quillink logout
 
 ### Interactive session
 
-Run `quillink` with no arguments in a terminal to open a session: a short banner, then a `quillink ›` prompt where you type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`).
+Run `quillink` with no arguments in a terminal to open a full-screen session (your earlier terminal lines come back when it ends): a short banner with suggested commands, then a `quillink ›` prompt where you type commands without the `quillink` prefix (`note list`, `note get <id>`, `help`, `exit`).
 
 - Up/down arrows recall earlier commands; Tab completes command, subcommand and flag names. History is kept in memory only, and lines that pass `--token` are never recorded.
 - A Zero-Knowledge account is unlocked once per session instead of per command. The key stays in memory only and is wiped after 15 minutes without use, on `lock`, and on `exit` / Ctrl-D.
+- Output taller than the window opens in a pager (arrows, PgUp/PgDn, space, `q` to return).
 - `clear` clears the screen. Ctrl-C during the banner animation skips it.
 - Scripts are unaffected: when stdin or stdout isn't a terminal, or with `--json`, bare `quillink` prints help as before.
 - `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation. Help text is coloured on a terminal and plain when piped.
+
+### Output formats and saving to a file
+
+- `--output table|json|csv|yaml|md` on every command (default `table`; `--json` is the same as `--output json`). CSV and Markdown turn list results into one row per item.
+- `--out <file>` saves the result instead of printing it. Without `--output`, the format comes from the extension (`.csv`, `.json`, `.yaml`, `.md`; anything else is a table). Files are readable only by you, an existing file is never overwritten without `--force`, and a failed command leaves no file behind.
+
+```sh
+quillink note list --output csv --out notes.csv
+quillink tag list --counts --out tags.md
+quillink note get <id> --output yaml
+```
 
 Every command supports `--json` for scripting (stable, independently versioned output schema — see `internal/output`), and non-zero exit codes for common failure cases (`internal/output/exitcodes.go`): 2 = auth failure, 3 = not found, 4 = rate limited, 5 = invalid input.
 

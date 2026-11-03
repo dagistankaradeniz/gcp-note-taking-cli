@@ -25,7 +25,24 @@ type Envelope struct {
 	Data          any    `json:"data"`
 }
 
+// JSON emits v in the current structured format (Current): the --json
+// envelope by default, or CSV / YAML / Markdown rendered from the same
+// data. Commands call it whenever a structured format is selected.
 func JSON(v any) error {
+	switch current {
+	case FormatCSV, FormatMarkdown, FormatYAML:
+		data, err := toOrdered(v)
+		if err != nil {
+			return err
+		}
+		switch current {
+		case FormatCSV:
+			return writeCSV(os.Stdout, data)
+		case FormatMarkdown:
+			return writeMarkdown(os.Stdout, data)
+		}
+		return writeYAML(os.Stdout, object{{key: "schema_version", val: SchemaVersion}, {key: "data", val: data}})
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(Envelope{SchemaVersion: SchemaVersion, Data: v})

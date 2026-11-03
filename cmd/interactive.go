@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/banner"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/pager"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/shell"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/style"
 	"github.com/spf13/cobra"
@@ -40,7 +42,7 @@ func init() {
 }
 
 func runRoot(cmd *cobra.Command, _ []string) error {
-	if shellActive || jsonOutput || !isTerminalStdin() || !term.IsTerminal(int(os.Stdout.Fd())) {
+	if shellActive || jsonOutput || !isTerminalStdin() || !style.IsTerminal(os.Stdout) {
 		return cmd.Help()
 	}
 	return runShell()
@@ -49,7 +51,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 // versionText is the banner without the animation on a terminal, and
 // Cobra's usual "quillink version X" line everywhere else.
 func versionText(c *cobra.Command) string {
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
+	if !style.IsTerminal(os.Stdout) {
 		return fmt.Sprintf("%s version %s\n", c.Name(), c.Version)
 	}
 	return banner.Header(style.For(os.Stdout), bannerInfo(), terminalColumns()) + "\n"
@@ -69,12 +71,30 @@ func terminalColumns() int {
 }
 
 // shellSuggestions is decided from local state only (is a credential
-// stored or set?), never a network call.
-func shellSuggestions() []string {
+// stored or set?), never a network call. `login` is always offered.
+func shellSuggestions() []banner.Suggestion {
 	if resolveToken() == "" {
-		return []string{"login", "help", "exit"}
+		return []banner.Suggestion{
+			{Command: "login", Desc: "sign in to Quillink"},
+			{Command: "workspace list", Desc: "your workspaces"},
+			{Command: "workspace add", Args: "<name>", Desc: "add a workspace"},
+			{Command: "help", Args: "[command]", Desc: "all commands"},
+			{Command: "exit", Desc: "leave the session"},
+		}
 	}
-	return []string{"note list", "note search", "note create", "help", "logout", "exit"}
+	return []banner.Suggestion{
+		{Command: "note list", Desc: "your recent notes"},
+		{Command: "note search", Args: "<text>", Desc: "find notes"},
+		{Command: "note get", Args: "<id>", Desc: "open a note"},
+		{Command: "note create", Args: "<title>", Desc: "start a note"},
+		{Command: "tag list", Desc: "tags and counts"},
+		{Command: "folder list", Desc: "your folders"},
+		{Command: "whoami", Desc: "who's signed in"},
+		{Command: "help", Args: "[command]", Desc: "all commands"},
+		{Command: "login", Desc: "sign in or switch account"},
+		{Command: "logout", Desc: "sign out"},
+		{Command: "exit", Desc: "leave the session"},
+	}
 }
 
 func runShell() error {
@@ -87,6 +107,20 @@ func runShell() error {
 	out := os.Stdout
 	p := style.For(out)
 	cols := terminalColumns()
+	fd := int(os.Stdin.Fd())
+
+	// Full screen: the alternate screen hides the user's earlier terminal
+	// lines and gives them back untouched when the session ends, however
+	// it ends.
+	fmt.Fprint(out, altScreenOn)
+	restore := func() { fmt.Fprint(out, "\033[?25h"+altScreenOff) }
+	defer restore()
+	defer func() {
+		if r := recover(); r != nil {
+			restore()
+			panic(r)
+		}
+	}()
 
 	if cols >= banner.Width {
 		net := banner.NewNetwork(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
@@ -99,12 +133,22 @@ func runShell() error {
 			playSkippable(net, out, p)
 		}
 	}
-	fmt.Fprint(out, banner.Header(p, bannerInfo(), cols))
-	fmt.Fprintln(out)
-	fmt.Fprint(out, banner.Suggested(p, shellSuggestions(), cols))
+	fmt.Fprint(out, banner.Compose(p, bannerInfo(), cols, shellSuggestions()))
 	fmt.Fprintln(out)
 
-	fd := int(os.Stdin.Fd())
+	// Ctrl-C while a command runs (or a terminal hang-up) ends the
+	// session; the screen and terminal mode are put back first.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sig)
+	go func() {
+		if _, ok := <-sig; ok {
+			zkSessionWipe()
+			restore()
+			os.Exit(130)
+		}
+	}()
+
 	t := term.NewTerminal(struct {
 		io.Reader
 		io.Writer
@@ -139,7 +183,7 @@ func runShell() error {
 		case "exit", "quit":
 			return nil
 		case "clear":
-			fmt.Fprint(out, "\033[H\033[2J")
+			fmt.Fprint(out, clearScreen)
 			continue
 		case "lock":
 			if zkSessionWipe() {
@@ -149,9 +193,15 @@ func runShell() error {
 			}
 			continue
 		}
-		runShellCommand(args)
+		runShellCommand(fd, args)
 	}
 }
+
+const (
+	altScreenOn  = "\033[?1049h\033[H"
+	altScreenOff = "\033[?1049l"
+	clearScreen  = "\033[H\033[2J"
+)
 
 // playSkippable runs the animation; Ctrl-C skips to the final frame
 // instead of quitting.
@@ -184,12 +234,72 @@ func readShellLine(fd int, t *term.Terminal) (string, error) {
 	return t.ReadLine()
 }
 
-func runShellCommand(args []string) {
+// streamingCommands talk to the user while they run (the device-login
+// code and "waiting for approval"), so their output isn't held back for
+// the pager.
+var streamingCommands = map[string]bool{
+	"quillink login":           true,
+	"quillink workspace login": true,
+}
+
+// runShellCommand runs one command. Its output is collected first: when
+// it's taller than the screen it opens in the pager (the full-screen
+// session has no scrollback), otherwise it's printed as usual.
+func runShellCommand(fd int, args []string) {
 	resetFlags(rootCmd)
 	rootCmd.SetArgs(args)
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
+	if c, _, err := rootCmd.Find(args); err == nil && streamingCommands[c.CommandPath()] {
+		if err := finishOutput(rootCmd.Execute()); err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+		}
+		return
 	}
+
+	text, err := captureStdout(func() error { return finishOutput(rootCmd.Execute()) })
+	if err != nil {
+		defer fmt.Fprintln(os.Stderr, "Error:", err)
+	}
+	cols, height, sizeErr := term.GetSize(int(os.Stdout.Fd()))
+	rows := pager.Wrap(text, cols)
+	if sizeErr != nil || len(rows) < height-1 {
+		fmt.Fprint(os.Stdout, text)
+		return
+	}
+	state, rawErr := term.MakeRaw(fd)
+	if rawErr != nil {
+		fmt.Fprint(os.Stdout, text)
+		return
+	}
+	_ = pager.Show(os.Stdin, os.Stdout, style.For(os.Stdout), rows, height)
+	_ = term.Restore(fd, state)
+	// Back at the prompt, the end of the output stays in view.
+	tail := rows[max(len(rows)-(height-2), 0):]
+	fmt.Fprint(os.Stdout, clearScreen+strings.Join(tail, "\033[0m\n")+"\033[0m\n")
+}
+
+// captureStdout runs fn with stdout redirected into a pipe that still
+// counts as the terminal for colour, and returns what was written.
+func captureStdout(fn func() error) (string, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", fn()
+	}
+	prev := os.Stdout
+	os.Stdout = w
+	style.TreatAsTerminal(w)
+	var buf strings.Builder
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(done)
+	}()
+	runErr := fn()
+	os.Stdout = prev
+	style.TreatAsTerminal(nil)
+	_ = w.Close()
+	<-done
+	_ = r.Close()
+	return buf.String(), runErr
 }
 
 // resetFlags puts every flag back to its default, so a flag given to one

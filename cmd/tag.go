@@ -31,6 +31,8 @@ var (
 var tagListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List every tag used across your active notes",
+	Example: `  quillink tag list --counts
+  quillink tag list --counts --output csv --out tags.csv`,
 	Long: `List every tag used across your active notes. With --counts, also show
 how many notes and canvases carry each tag, most-used first.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,7 +70,9 @@ how many notes and canvases carry each tag, most-used first.`,
 var tagShowCmd = &cobra.Command{
 	Use:   "show <tag> [tag...]",
 	Short: "List the notes carrying these tags (all of them by default)",
-	Args:  cobra.MinimumNArgs(1),
+	Example: `  quillink tag show work urgent
+  quillink tag show work urgent --match any --output csv --out tagged.csv`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		q := url.Values{}
 		q.Set("limit", strconv.Itoa(tagShowLimit))
