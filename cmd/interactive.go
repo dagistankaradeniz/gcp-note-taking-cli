@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/banner"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/shell"
@@ -131,12 +133,16 @@ func runShell() error {
 	// No separate network spinner: the session already shows the running
 	// command with its own.
 	client.Busy = nil
+	client.KeepConnections()
+	output.Listed = rememberRows
+	defer func() { output.Listed = nil }()
 
 	err := session.Run(session.Host{
 		Run:          runSessionLine,
 		Suggest:      suggestShellLine,
 		Status:       sessionStatus,
 		RefreshAfter: changesStatus,
+		Cacheable:    cacheableLine,
 		History:      shell.NewHistory(shellHistoryLimit),
 		Classify:     classifyShellWords,
 		IntroFrames:  intro,
@@ -178,7 +184,7 @@ func runSessionLine(line string) session.Outcome {
 	args, err := shell.Split(line)
 	if err != nil {
 		printError(err)
-		return session.Ran
+		return session.Failed(output.ExitInvalidInput)
 	}
 	if len(args) > 0 && args[0] == rootCmd.Name() {
 		args = args[1:]
@@ -199,12 +205,24 @@ func runSessionLine(line string) session.Outcome {
 		}
 		return session.Ran
 	}
+	args, err = pickRows(args)
+	if err != nil {
+		printError(err)
+		return session.Failed(output.ExitInvalidInput)
+	}
+	listingKind = kindOf(commandFor(args))
 	resetFlags(rootCmd)
 	rootCmd.SetArgs(args)
-	if err := finishOutput(rootCmd.Execute()); err != nil {
-		printError(err)
-	}
+	err = finishOutput(rootCmd.Execute())
 	progress.Reset()
+	switch args[0] {
+	case "login", "logout", "workspace":
+		sessionTokens.forget()
+	}
+	if err != nil {
+		printError(err)
+		return session.Failed(exitCode(err))
+	}
 	return session.Ran
 }
 
@@ -235,11 +253,7 @@ func sessionStatus() session.Status {
 	if resolveToken() == "" {
 		return st
 	}
-	saved := client.Busy
-	client.Busy = nil // the status line has no spinner of its own
-	var status client.StatusResponse
-	err := newClient().Do("GET", "/v1/status", nil, nil, &status)
-	client.Busy = saved
+	status, err := accountStatus()
 	if err != nil {
 		st.Account = "signed in"
 		return st
@@ -250,6 +264,35 @@ func sessionStatus() session.Status {
 	}
 	st.Plan = planName(status.Plan)
 	return st
+}
+
+// accountStatus is /v1/status, asked once per sign-in and then again every
+// statusFor: unlocking something changes the status line, not the account.
+func accountStatus() (client.StatusResponse, error) {
+	key := zkSessionOwner()
+	statusMemo.Lock()
+	defer statusMemo.Unlock()
+	if statusMemo.key == key && time.Since(statusMemo.at) < statusFor {
+		return statusMemo.resp, nil
+	}
+	saved := client.Busy
+	client.Busy = nil // the status line has no spinner of its own
+	var status client.StatusResponse
+	err := newClient().Do("GET", "/v1/status", nil, nil, &status)
+	client.Busy = saved
+	if err == nil {
+		statusMemo.key, statusMemo.at, statusMemo.resp = key, time.Now(), status
+	}
+	return status, err
+}
+
+const statusFor = 5 * time.Minute
+
+var statusMemo struct {
+	sync.Mutex
+	key  string // the API base and credential it's for
+	at   time.Time
+	resp client.StatusResponse
 }
 
 // resetFlags puts every flag back to its default, so a flag given to one
@@ -366,6 +409,11 @@ func suggestShellLine(line string, pos int) ([]session.Suggestion, int) {
 		c = next
 	}
 	var out []session.Suggestion
+	if !strings.HasPrefix(word, "-") {
+		if ids := suggestIDs(fields, word); ids != nil {
+			return ids, from
+		}
+	}
 	if strings.HasPrefix(word, "-") {
 		add := func(f *pflag.Flag) {
 			if !f.Hidden && strings.HasPrefix("--"+f.Name, word) {

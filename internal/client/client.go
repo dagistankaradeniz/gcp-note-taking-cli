@@ -64,6 +64,18 @@ func requireHTTPS(u *url.URL) error {
 	return fmt.Errorf("refusing to connect to %s://%s: the API base must use https (http is only allowed for localhost)", u.Scheme, u.Host)
 }
 
+// shared, once set, is the transport every Client uses instead of opening
+// a connection per request.
+var shared http.RoundTripper
+
+// KeepConnections reuses connections between requests, for the interactive
+// session: each command then skips the TLS handshake. Connections are
+// dropped well before a server would close them, which keeps clear of the
+// idle-close race described in New.
+func KeepConnections() {
+	shared = &http.Transport{IdleConnTimeout: 20 * time.Second, ForceAttemptHTTP2: true}
+}
+
 type Client struct {
 	BaseURL string
 	Token   string
@@ -71,6 +83,10 @@ type Client struct {
 }
 
 func New(baseURL, token string) *Client {
+	var transport http.RoundTripper = &http.Transport{DisableKeepAlives: true}
+	if shared != nil {
+		transport = shared
+	}
 	return &Client{
 		BaseURL: baseURL,
 		Token:   token,
@@ -82,7 +98,7 @@ func New(baseURL, token string) *Client {
 			// server closes an idle pooled connection right as a new
 			// request tries to reuse it, surfacing as a bare EOF instead
 			// of a clean error. One connection per request avoids it.
-			Transport: &http.Transport{DisableKeepAlives: true},
+			Transport: transport,
 			// Never follow a redirect down to plain HTTP.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {

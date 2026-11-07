@@ -39,3 +39,25 @@ func TestJSONEnvelope(t *testing.T) {
 		t.Errorf("data = %v, want {foo: bar}", got.Data)
 	}
 }
+
+func TestNumbered(t *testing.T) {
+	headers := []string{"ID", "TITLE"}
+	rows := [][]string{{"a", "One"}, {"b", "Two"}}
+	if h, _ := numbered(headers, rows); len(h) != 2 {
+		t.Fatal("no column outside the session")
+	}
+
+	var ids, titles []string
+	Listed = func(i, ti []string) { ids, titles = i, ti }
+	defer func() { Listed = nil }()
+	h, r := numbered(headers, rows)
+	if h[0] != "#" || r[1][0] != "2" || r[1][1] != "b" {
+		t.Fatalf("got %v %v", h, r)
+	}
+	if ids[1] != "b" || titles[1] != "Two" {
+		t.Fatalf("got %v %v", ids, titles)
+	}
+	if h, _ := numbered([]string{"EMAIL"}, [][]string{{"x"}}); len(h) != 1 {
+		t.Fatal("no ids, nothing to number")
+	}
+}

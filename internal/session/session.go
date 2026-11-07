@@ -1,16 +1,18 @@
 // Package session is the interactive `quillink` session: a full-window
 // view with the app name pinned top left and the version top right,
-// command output in a scrollable pane (mouse wheel, PgUp/PgDn) that
-// selects and copies with the mouse, and an input box pinned to the
-// bottom with a status line under it. It doesn't run commands itself; the
+// command output in a scrollable, searchable pane (mouse wheel, PgUp/PgDn,
+// Ctrl+F) that selects, copies and opens links with the mouse, and an
+// input box pinned to the bottom with a status line under it. It doesn't run commands itself; the
 // Host does (the cmd package).
 package session
 
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,16 +46,23 @@ type Status struct {
 }
 
 // Outcome is what the Host did with a line.
-type Outcome int
+type Outcome struct {
+	action int
+	// Exit is the failed command's exit code; 0 when it worked.
+	Exit int
+}
 
-const (
+var (
 	// Ran: the line was a command and has finished.
-	Ran Outcome = iota
+	Ran = Outcome{}
 	// Quit: leave the session.
-	Quit
+	Quit = Outcome{action: 1}
 	// Clear: clear the screen.
-	Clear
+	Clear = Outcome{action: 2}
 )
+
+// Failed: the line was a command and it failed with this exit code.
+func Failed(code int) Outcome { return Outcome{Exit: code} }
 
 // Host runs what the user types.
 type Host struct {
@@ -68,7 +77,11 @@ type Host struct {
 	// RefreshAfter reports whether a line can change the status line
 	// (login, logout, workspace use, unlock, lock...).
 	RefreshAfter func(line string) bool
-	History      *shell.History
+	// Cacheable reports whether a line only reads, and its output may be
+	// kept in memory to show at once the next time, while it refreshes.
+	// Lines that change the status line empty that memory.
+	Cacheable func(line string) bool
+	History   *shell.History
 	// Classify tells what each word of a line is, for colouring it.
 	Classify func(words []string) []Kind
 	// IntroFrames open the output pane (the banner), played one after the
@@ -154,6 +167,7 @@ type model struct {
 	gen     int      // counts add calls: lines can change at a constant length
 	rows    []string // what the pane shows: everything wrapped to its width
 	cont    []bool   // rows[i] carries on the line of rows[i-1]
+	heads   []int    // the rows holding a typed command, ascending
 	shown   paneKey  // what rows was built from
 	intro   []string // banner frames; nil once cleared
 	introAt int
@@ -176,6 +190,7 @@ type model struct {
 	quitAt  time.Time // first Ctrl+C, for the "again to exit" window
 	lastDur time.Duration
 	lastEnd time.Time // when the last command finished; zero after a clear
+	lastErr int       // the last command's exit code
 	quit    bool
 	killed  bool
 
@@ -185,6 +200,21 @@ type model struct {
 	clickTime time.Time
 	notice    string // shown briefly in the pane's corner
 	noticeAt  time.Time
+
+	finding bool
+	find    textinput.Model
+	matches []match
+	at      int // the current match
+
+	cache map[string]cachedOutput // by line
+	stale int                     // last lines of the pane that are cached output
+	fresh string                  // what the running command has written
+}
+
+// cachedOutput is a read-only command's last output.
+type cachedOutput struct {
+	text string
+	at   time.Time
 }
 
 // paneKey is everything the pane's rows depend on, so they're only
@@ -200,9 +230,16 @@ const (
 	quitWindow     = 2 * time.Second
 	// maxLines caps the output kept for scrolling back.
 	maxLines = 5000
-	// divider marks a line in the pane that is drawn as a rule between one
-	// command's output and the next command; the rest of it is the label.
+	// divider marks a line in the pane that is drawn as a rule after a
+	// command's output; the rest of it is the label.
 	divider = "\x00divider\x00"
+	// typed marks the line showing a command as it was typed.
+	typed = "\x00typed\x00"
+	// failedMark starts a failed command's divider label.
+	failedMark = "✗"
+	// cacheFor and maxCached bound the output kept for showing at once.
+	cacheFor  = 5 * time.Minute
+	maxCached = 1000 // lines
 )
 
 func promptStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(ui.Brand).Bold(true) }
@@ -215,13 +252,14 @@ func newModel(h Host) model {
 	sec := textinput.New()
 	sec.EchoMode = textinput.EchoPassword
 	sec.EchoCharacter = '•'
+	find := textinput.New()
 	out := viewport.New()
 	out.FillHeight = true
 	out.MouseWheelEnabled = true
 	// The pane scrolls with PgUp/PgDn and the wheel only: the arrow keys
 	// belong to the input (suggestions, history).
 	out.KeyMap = viewport.KeyMap{PageUp: out.KeyMap.PageUp, PageDown: out.KeyMap.PageDown}
-	return model{host: h, input: in, secret: sec, out: out, hist: -1, follow: true, width: ui.Width(), intro: h.IntroFrames}
+	return model{host: h, input: in, secret: sec, find: find, out: out, hist: -1, follow: true, width: ui.Width(), intro: h.IntroFrames, cache: map[string]cachedOutput{}}
 }
 
 func (m model) animating() bool { return m.introAt < len(m.intro)-1 }
@@ -250,8 +288,11 @@ func (m *model) layout() {
 	if key != m.shown {
 		m.shown = key
 		m.pick = selection{}
-		m.rows, m.cont = wrapRows(m.paneLines(w), w)
+		m.rows, m.cont, m.heads = wrapRows(m.paneLines(w), w)
 		m.out.SetContentLines(m.rows)
+		if m.finding {
+			m.search()
+		}
 	}
 	m.out.SetYOffset(m.out.YOffset()) // the pane may have grown
 	if m.follow {
@@ -321,6 +362,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		ui.SetWidth(msg.Width)
 		m.input.SetWidth(max(msg.Width-8, 10))
+		m.find.SetWidth(max(msg.Width-8, 10))
 		return m, nil
 
 	case tea.MouseWheelMsg:
@@ -339,6 +381,16 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case copiedMsg:
 		return m.copied(msg)
+
+	case openMsg:
+		return m.opened(msg)
+
+	case openedMsg:
+		if msg.err != nil {
+			cmd := m.say("Couldn't open the link")
+			return m, cmd
+		}
+		return m, nil
 
 	case introMsg:
 		if !m.animating() {
@@ -359,6 +411,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case outputMsg:
+		m.dropStale()
+		m.fresh += string(msg)
 		m.partial += string(msg)
 		i := strings.LastIndexByte(m.partial, '\n')
 		if i < 0 {
@@ -385,6 +439,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case doneMsg:
 		var cmds []tea.Cmd
+		m.dropStale()
 		if m.partial != "" {
 			m.add(m.partial)
 			m.partial = ""
@@ -403,9 +458,12 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastEnd = time.Time{}
 			m.follow = true
 		default:
+			m.lastErr = msg.outcome.Exit
 			m.add(divider + m.stamp())
+			m.remember(line, msg.outcome)
 		}
 		if m.host.RefreshAfter != nil && m.host.RefreshAfter(line) {
+			clear(m.cache)
 			cmds = append(cmds, m.fetchStatus())
 		}
 		return m, tea.Sequence(cmds...)
@@ -415,9 +473,17 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	if m.prompt != nil {
+	switch {
+	case m.prompt != nil:
 		m.secret, cmd = m.secret.Update(msg)
-	} else {
+	case m.finding:
+		m.find, cmd = m.find.Update(msg)
+		if _, pasted := msg.(tea.PasteMsg); pasted {
+			m.search()
+			m.at = len(m.matches) - 1
+			m.reveal()
+		}
+	default:
 		m.input, cmd = m.input.Update(msg)
 	}
 	return m, cmd
@@ -447,6 +513,13 @@ func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.input.Focus()
 	}
 
+	if m.finding {
+		return m.findKey(msg, k)
+	}
+	if k == "ctrl+f" || k == "/" && m.input.Value() == "" {
+		return m.openFind()
+	}
+
 	if k == "ctrl+c" {
 		if m.running == "" && m.input.Value() != "" {
 			m.input.Reset()
@@ -466,7 +539,7 @@ func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if k == "ctrl+l" {
-		m.lines, m.intro, m.introAt = nil, nil, 0
+		m.lines, m.intro, m.introAt, m.stale = nil, nil, 0, 0
 		m.lastEnd = time.Time{}
 		m.follow = true
 		return m, nil
@@ -574,7 +647,8 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 	if m.host.History != nil {
 		m.host.History.Add(line)
 	}
-	m.add(ui.Render(promptStyle().Render("› ") + highlight(line, m.host.Classify)))
+	m.add(typed + ui.Render(promptStyle().Render("› ")+highlight(line, m.host.Classify)))
+	m.showCached(line)
 	m.follow = true
 	m.running = line
 	m.started = time.Now()
@@ -620,7 +694,7 @@ func capture(fn func() Outcome) Outcome {
 
 func (m model) View() tea.View {
 	v := tea.NewView(m.top() + "\n" + m.paneView() + "\n" + m.bottom())
-	if m.prompt == nil {
+	if m.prompt == nil && !m.finding {
 		// The real terminal cursor, in the input line: under the top
 		// row, the pane, the hint above the box if any, and its border.
 		pre := m.aboveBox()
@@ -636,8 +710,9 @@ func (m model) View() tea.View {
 	return v
 }
 
-// paneView is the pane with what's drawn over it: the selection, and the
-// running command's loader, the last command's time and the copy notice.
+// paneView is the pane with what's drawn over it: links, search matches,
+// the selection, the command being read, and the running command's
+// loader, the last command's time and any notice.
 // The loader sits at the end of the output, where the finished command's
 // divider takes over from it. Whatever can't be seen there, because the
 // pane is scrolled up, goes to the pane's bottom-right corner instead.
@@ -645,23 +720,31 @@ func (m model) paneView() string {
 	rows := strings.Split(m.out.View(), "\n")
 	top := m.out.YOffset()
 	w := max(m.width, 20)
+	markLinks(rows)
+	m.markMatches(rows, top)
 	if m.pick.on {
 		for i := range rows {
 			if r := top + i; r < len(m.rows) {
 				if start, end, ok := m.pick.cols(r, ansi.StringWidth(m.rows[r])); ok {
-					rows[i] = invert(rows[i], start, end)
+					rows[i] = mark(rows[i], start, end, reverse)
 				}
 			}
 		}
 	}
+	if h := m.pinned(); h >= 0 {
+		rows[0] = pinnedRow(m.rows[h], w)
+	}
 	corner := ""
 	switch loader := m.loader(); {
 	case loader != "" && len(m.rows)-1-top < len(rows):
-		rows[len(m.rows)-1-top] = ruleStyled(ansi.Truncate(loader, w-6, "…"), w)
+		rows[len(m.rows)-1-top] = ruleStyled(ansi.Truncate(loader, w-6, "…"), ui.Subtle, w)
 	case loader != "":
 		corner = loader
 	case !m.follow && !m.lastEnd.IsZero():
-		corner = ui.Fg(ui.Muted, m.stamp(), false)
+		corner = ui.Fg(ruleColor(m.stamp()), m.stamp(), false)
+	}
+	if m.finding {
+		corner = m.findCorner()
 	}
 	if m.notice != "" && time.Since(m.noticeAt) < noticeFor {
 		corner = ui.Fg(ui.Green, "✓ "+m.notice, false)
@@ -673,20 +756,88 @@ func (m model) paneView() string {
 	return strings.Join(rows, "\n")
 }
 
+// pinned is the row of the command whose output fills the top of the
+// pane, once that command has scrolled out of view; -1 when there's none.
+func (m model) pinned() int {
+	top := m.out.YOffset()
+	i := sort.SearchInts(m.heads, top)
+	if i == 0 || m.out.Height() < 3 || i < len(m.heads) && m.heads[i] == top {
+		return -1
+	}
+	return m.heads[i-1]
+}
+
+// pinnedRow is a command held at the top of the pane, ruled off from the
+// output scrolling under it.
+func pinnedRow(row string, w int) string {
+	row = ansi.Truncate(row, w, "…")
+	fill := w - ansi.StringWidth(row) - 1
+	if fill < 1 {
+		return row
+	}
+	return row + " " + ui.Render(ui.Fg(ui.Subtle, strings.Repeat("┄", fill), false))
+}
+
 // loader is the running command's spinner or progress bar.
 func (m model) loader() string {
 	switch {
 	case m.prog != nil:
 		return progress.Line(m.prog, m.frame)
 	case m.running != "":
-		return progress.Line(&progress.State{Label: commandName(m.running), Started: m.started}, m.frame)
+		label := commandName(m.running)
+		if m.stale > 0 {
+			label = "Refreshing " + label
+		}
+		return progress.Line(&progress.State{Label: label, Started: m.started}, m.frame)
 	}
 	return ""
 }
 
-// stamp is when the last command finished and how long it took.
+// stamp is when the last command finished and how long it took, led by
+// the exit code when it failed.
 func (m model) stamp() string {
-	return m.lastEnd.Format("15:04") + " · " + duration(m.lastDur)
+	s := m.lastEnd.Format("15:04") + " · " + duration(m.lastDur)
+	if m.lastErr != 0 {
+		s = fmt.Sprintf("%s exit %d · %s", failedMark, m.lastErr, s)
+	}
+	return s
+}
+
+// showCached puts line's last output in the pane until the real one
+// comes; a cached entry past its time is dropped.
+func (m *model) showCached(line string) {
+	m.stale, m.fresh = 0, ""
+	c, ok := m.cache[line]
+	if !ok {
+		return
+	}
+	if time.Since(c.at) > cacheFor {
+		delete(m.cache, line)
+		return
+	}
+	m.add(c.text)
+	m.stale = strings.Count(c.text, "\n") + 1
+}
+
+// dropStale takes the cached output back out of the pane.
+func (m *model) dropStale() {
+	if m.stale > 0 {
+		m.lines = m.lines[:max(len(m.lines)-m.stale, 0)]
+		m.stale = 0
+		m.gen++
+	}
+}
+
+// remember keeps a finished command's output for next time.
+func (m *model) remember(line string, o Outcome) {
+	text := strings.TrimRight(m.fresh, "\n")
+	m.fresh = ""
+	if o != Ran || text == "" || strings.Count(text, "\n") >= maxCached ||
+		m.host.Cacheable == nil || !m.host.Cacheable(line) {
+		delete(m.cache, line)
+		return
+	}
+	m.cache[line] = cachedOutput{text: text, at: time.Now()}
 }
 
 // top is the row above the output pane: the app name on the left, as in
@@ -708,12 +859,12 @@ func (m model) bottom() string {
 	b.WriteString(m.aboveBox())
 
 	field, _ := m.field(m.fieldWidth())
-	if m.prompt != nil {
-		field = m.secret.View()
-	}
 	border := ui.Subtle
-	if m.prompt != nil {
-		border = ui.Brand
+	switch {
+	case m.prompt != nil:
+		field, border = m.secret.View(), ui.Brand
+	case m.finding:
+		field, border = m.find.View(), ui.Brand
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -810,7 +961,10 @@ func (m model) statusLine(w int) string {
 	l := " " + strings.Join(left, ui.Fg(ui.Subtle, " │ ", false))
 	sep := ui.Fg(ui.Subtle, " · ", false)
 	// The key hints are the first thing to go in a narrow window.
-	hints := muted("Tab complete · ↑ history · PgUp scroll · drag to copy · Ctrl+D exit")
+	hints := muted("Tab complete · ↑ history · PgUp scroll · / find · drag to copy · Ctrl+D exit")
+	if m.finding {
+		hints = muted("Enter or ↑ older · ↓ newer · Esc close")
+	}
 	for _, r := range []string{strings.Join(append(right[:len(right):len(right)], hints), sep), strings.Join(right, sep)} {
 		r += " "
 		if gap := w - ansi.StringWidth(l) - ansi.StringWidth(r); gap >= 1 {
@@ -822,16 +976,30 @@ func (m model) statusLine(w int) string {
 
 // rule is the divider after a command: a dim line across the pane with
 // the command's finish time and duration at its right end.
-func rule(label string, w int) string { return ruleStyled(ui.Fg(ui.Muted, label, false), w) }
+func rule(label string, w int) string {
+	line := ui.Subtle
+	if strings.HasPrefix(label, failedMark) {
+		line = ui.Red
+	}
+	return ruleStyled(ui.Fg(ruleColor(label), label, false), line, w)
+}
+
+// ruleColor is red for a failed command's label.
+func ruleColor(label string) color.Color {
+	if strings.HasPrefix(label, failedMark) {
+		return ui.Red
+	}
+	return ui.Muted
+}
 
 // ruleStyled is a rule with a label that carries its own colour.
-func ruleStyled(label string, w int) string {
+func ruleStyled(label string, line color.Color, w int) string {
 	tail := " " + label + " "
 	if ansi.StringWidth(tail)+4 > w {
-		return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w), false))
+		return ui.Render(ui.Fg(line, strings.Repeat("─", w), false))
 	}
-	return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w-ansi.StringWidth(tail)-2), false) +
-		tail + ui.Fg(ui.Subtle, "──", false))
+	return ui.Render(ui.Fg(line, strings.Repeat("─", w-ansi.StringWidth(tail)-2), false) +
+		tail + ui.Fg(line, "──", false))
 }
 
 // duration is short: tenths under a minute, whole seconds above.

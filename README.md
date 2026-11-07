@@ -59,6 +59,14 @@ Run `quillink` with no arguments in a terminal to open a session: a short banner
 
 - Drag over the output to select and copy it, double-click to copy a word (such as an id), triple-click to copy a line. This uses the system clipboard, or asks the terminal to (OSC 52) over SSH and on Windows. Shift-drag (Option-drag in macOS Terminal and iTerm2) still gives you the terminal's own selection.
 - A running command shows a spinner or progress bar with its elapsed time at the bottom right of its output. When it ends, that becomes a divider with the finish time and duration. While you're scrolled up the time stays in the pane's bottom-right corner, and the divider is there when you reach the end.
+- Tables with ids get a `#` column: `note get 3` opens row 3 of the last note list, and the same goes for tasks, folders and canvases. The line above the result shows which item the number picked.
+- After `note get ` (or any command that takes an id), Tab completes ids from recent results. Type part of a title or a row number to narrow them down. This uses what's already on screen, with no extra requests.
+- A failed command's divider is red and shows its exit code.
+- Scrolling through long output keeps the command that produced it pinned at the top of the pane.
+- `/` on an empty line or Ctrl+F searches the output: Enter or ↑ for older matches, ↓ for newer, Esc to close.
+- Click a link in the output to open it in your browser. Links a table shortened with "…" don't open; use `--output` to see them in full.
+- Running a list again (`note list`, `task list`, `task due`, `tag list`, `folder list`, `canvas list`) shows its last result at once, marked as refreshing, then replaces it. This stays in memory for 5 minutes and isn't used while a Zero-Knowledge account or the Vault is unlocked.
+- The session reuses its connection and keeps your sign-in in memory, so commands after the first are quicker.
 - While you type, a list of matching commands and flags appears under the box: ↑/↓ to pick, Tab to accept, Esc to hide. Without the list, ↑/↓ recall earlier commands. History is kept in memory only, and lines that pass `--token` are never recorded.
 - Ctrl-C twice leaves the session (a running command is stopped with it).
 - Passwords and keys are asked for in the box itself, masked, and never enter history. `--*-stdin` flags don't work inside the session; leave them off to be asked.

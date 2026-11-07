@@ -29,13 +29,17 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	if err := finishOutput(rootCmd.Execute()); err != nil {
-		exitCode := output.ExitGeneral
-		if apiErr, ok := err.(*client.APIError); ok {
-			exitCode = output.CodeForStatus(apiErr.Status)
-		}
 		printError(err)
-		os.Exit(exitCode)
+		os.Exit(exitCode(err))
 	}
+}
+
+// exitCode is the code a failed command exits with.
+func exitCode(err error) int {
+	if apiErr, ok := err.(*client.APIError); ok {
+		return output.CodeForStatus(apiErr.Status)
+	}
+	return output.ExitGeneral
 }
 
 func init() {
@@ -116,9 +120,15 @@ func resolveToken() string {
 	if env := os.Getenv("QUILLINK_TOKEN"); env != "" {
 		return env
 	}
+	if token, ok := sessionTokens.get(resolveWorkspaceName()); ok {
+		return token
+	}
 	token, err := storeForCurrent().Load()
 	if err != nil {
 		return ""
+	}
+	if shellActive && token != "" {
+		sessionTokens.set(resolveWorkspaceName(), token)
 	}
 	return token
 }

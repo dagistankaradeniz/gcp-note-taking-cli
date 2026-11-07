@@ -67,10 +67,15 @@ type copiedMsg struct {
 }
 
 // wrapRows breaks lines to the pane's width. cont marks a row that
-// carries on the line before it, so copying can join them up again.
-func wrapRows(lines []string, w int) (rows []string, cont []bool) {
+// carries on the line before it, so copying can join them up again; heads
+// are the rows where a typed command starts.
+func wrapRows(lines []string, w int) (rows []string, cont []bool, heads []int) {
 	for _, l := range lines {
 		l = strings.ReplaceAll(l, "\r", "") // the viewport would split on it
+		if rest, ok := strings.CutPrefix(l, typed); ok {
+			l = rest
+			heads = append(heads, len(rows))
+		}
 		lw := ansi.StringWidth(l)
 		if lw <= w {
 			rows, cont = append(rows, l), append(cont, false)
@@ -80,7 +85,7 @@ func wrapRows(lines []string, w int) (rows []string, cont []bool) {
 			rows, cont = append(rows, ansi.Cut(l, c, c+w)), append(cont, c > 0)
 		}
 	}
-	return rows, cont
+	return rows, cont, heads
 }
 
 // cell is the content cell under a window position, clamped to the pane
@@ -91,7 +96,7 @@ func (m model) cell(x, y int, inPane bool) (point, bool) {
 		return point{}, false
 	}
 	row := m.out.YOffset() + min(max(y-top, 0), height-1)
-	if inPane && row >= len(m.rows) {
+	if inPane && (row >= len(m.rows) || y == top && m.pinned() >= 0) {
 		return point{}, false
 	}
 	if len(m.rows) == 0 {
@@ -158,10 +163,14 @@ func (m model) release() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.pick.dragging = false
-	if !m.pick.on {
-		return m, nil
+	if m.pick.on {
+		return m, m.copySelection()
 	}
-	return m, m.copySelection()
+	if url := m.linkAt(m.pick.anchor); url != "" && m.clicks == 1 {
+		at := m.clickTime
+		return m, tea.Tick(multiClick, func(time.Time) tea.Msg { return openMsg{url, at} })
+	}
+	return m, nil
 }
 
 func (m model) copySelection() tea.Cmd {
@@ -176,13 +185,19 @@ func (m model) copySelection() tea.Cmd {
 // the terminal is asked instead (OSC 52); only then, as some terminals
 // prompt the user about it.
 func (m model) copied(msg copiedMsg) (tea.Model, tea.Cmd) {
-	m.notice, m.noticeAt = "Copied", time.Now()
-	clear := tea.Tick(noticeFor, func(time.Time) tea.Msg { return redrawMsg{} })
 	if msg.err != nil {
-		m.notice = "Sent to the terminal's clipboard"
-		return m, tea.Batch(tea.SetClipboard(msg.text), clear)
+		cmd := m.say("Sent to the terminal's clipboard")
+		return m, tea.Batch(tea.SetClipboard(msg.text), cmd)
 	}
-	return m, clear
+	cmd := m.say("Copied")
+	return m, cmd
+}
+
+// say shows a notice in the pane's corner for a moment. Call it before
+// the return statement: `return m, m.say(…)` may copy m first.
+func (m *model) say(text string) tea.Cmd {
+	m.notice, m.noticeAt = text, time.Now()
+	return tea.Tick(noticeFor, func(time.Time) tea.Msg { return redrawMsg{} })
 }
 
 // selectedText is the selection as plain text: no colour, no trailing
@@ -255,10 +270,15 @@ func (m model) lineAt(row int) (selection, bool) {
 	return selection{anchor: point{first, 0}, head: point{last, w - 1}, on: true}, true
 }
 
-// invert shows columns start to end of a row in reverse video.
-func invert(row string, start, end int) string {
+const (
+	reverse   = "\x1b[7m"
+	underline = "\x1b[4m"
+)
+
+// mark shows columns start to end of a row with the style in seq.
+func mark(row string, start, end int, seq string) string {
 	w := ansi.StringWidth(row)
-	return ansi.Cut(row, 0, start) + "\x1b[7m" + ansi.Strip(ansi.Cut(row, start, end)) + "\x1b[m" + ansi.Cut(row, end, w)
+	return ansi.Cut(row, 0, start) + seq + ansi.Strip(ansi.Cut(row, start, end)) + "\x1b[m" + ansi.Cut(row, end, w)
 }
 
 // overlay draws text at the right end of a row, over what's there.
