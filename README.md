@@ -29,7 +29,7 @@ quillink note update <id> --title "New title" --pinned
 quillink note search "query"
 quillink note lock <id>                # password-protect a note (Plus plan+), prompts twice to confirm
 quillink note unlock <id>              # reveal a password-protected note, prompts for a masked password
-quillink note delete <id>              # prompts for the password first if the note is locked
+quillink note delete <id>              # shows the note and asks you to confirm; also asks for the password if it's locked
 
 quillink tag list --counts             # every tag with its note/canvas counts
 quillink tag show work urgent          # notes carrying every one of these tags (--match any: at least one)
@@ -40,7 +40,7 @@ quillink task due                      # due today or overdue
 quillink task create "Send report" --due 2026-11-07          # all day; "2026-11-07 14:30" for a time
 quillink task update <id> --due 2026-11-10 | --clear-due
 quillink task done <id>                # task reopen <id> to undo; --date for one occurrence of a repeating task
-quillink task delete <id>              # moves it to the trash; task restore <id> brings it back
+quillink task delete <id>              # confirms, then moves it to the trash; task restore <id> brings it back
 quillink task category list
 
 quillink canvas list                   # --folder <id>, --tag <tag>, --trashed
@@ -74,6 +74,10 @@ Run `quillink` with no arguments in a terminal to open a session: a short banner
 - `clear` (or Ctrl-L) clears the screen. Ctrl-C during the banner animation skips it.
 - Scripts are unaffected: when stdin or stdout isn't a terminal, or with `--json`, bare `quillink` prints help as before.
 - `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation; `QUILLINK_THEME=light` or `dark` overrides the detected terminal background. Help text is coloured on a terminal and plain when piped.
+
+### Deleting
+
+`note delete`, `task delete`, `folder delete` and `workspace remove` show what will go (id and title or name) and ask you to confirm; anything but `y` or `yes` cancels. `--force` skips the question. Without a terminal to ask on, such as in scripts and CI, `--force` is required: the command otherwise stops with exit code 5 and deletes nothing. On a Zero-Knowledge account the confirmation unlocks first so it can show the real title. A locked note's password is still required with `--force`.
 
 ### On a terminal vs. in a script
 

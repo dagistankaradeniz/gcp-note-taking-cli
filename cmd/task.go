@@ -320,9 +320,43 @@ func completeCmd(use, short string, completed bool) *cobra.Command {
 var taskDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Move a task to the trash",
-	Args:  cobra.ExactArgs(1),
+	Long: `Moves a task to the trash, after showing it and asking you to confirm.
+--force skips the question, and scripts and CI must pass it.`,
+	Example: `  quillink task delete <id>
+  quillink task delete <id> --force`,
+	Annotations: confirmsDelete,
+	Args:        cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := newClient().Do("DELETE", "/v1/tasks/"+url.PathEscape(args[0]), nil, nil, nil); err != nil {
+		if err := canConfirm(); err != nil {
+			return err
+		}
+		c := newClient()
+		if !forceFlag {
+			dek, err := resolveZkDek(c) // the title is encrypted on a ZK account
+			if err != nil {
+				return err
+			}
+			var t client.Task
+			if err := c.Do("GET", "/v1/tasks/"+url.PathEscape(args[0]), nil, nil, &t); err != nil {
+				return err
+			}
+			decryptTaskZK(dek, &t)
+			fields := []ui.Field{{Label: "ID", Value: t.ID}, {Label: "Title", Value: orDefault(t.Title, "Untitled")}}
+			if t.DueAt != nil {
+				fields = append(fields, ui.Field{Label: "Due", Value: *t.DueAt})
+			}
+			ok, err := confirmDelete("task", append(fields, ui.Field{Label: "Effect", Value: "moves it to the trash; task restore brings it back"}))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				if jsonOutput {
+					return output.JSON(map[string]any{"id": args[0], "status": "cancelled"})
+				}
+				return nil
+			}
+		}
+		if err := c.Do("DELETE", "/v1/tasks/"+url.PathEscape(args[0]), nil, nil, nil); err != nil {
 			return err
 		}
 		if jsonOutput {

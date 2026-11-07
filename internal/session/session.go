@@ -124,9 +124,14 @@ func send(msg tea.Msg) bool {
 
 // AskSecret shows a masked prompt in the input box and waits for it. It
 // is called by a running command, from its own goroutine.
-func AskSecret(label string) (string, error) {
+func AskSecret(label string) (string, error) { return ask(label, false) }
+
+// Ask is AskSecret for an answer that isn't secret, such as a yes or no.
+func Ask(label string) (string, error) { return ask(label, true) }
+
+func ask(label string, plain bool) (string, error) {
 	reply := make(chan secretReply, 1)
-	if !send(promptMsg{label: label, reply: reply}) {
+	if !send(promptMsg{label: label, plain: plain, reply: reply}) {
 		return "", errors.New("no session")
 	}
 	r := <-reply
@@ -149,6 +154,7 @@ type (
 	statusMsg   Status
 	promptMsg   struct {
 		label string
+		plain bool
 		reply chan secretReply
 	}
 )
@@ -433,7 +439,12 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptMsg:
 		m.prompt = &msg
 		m.secret.Reset()
+		m.secret.EchoMode = textinput.EchoPassword
 		m.secret.Prompt = promptStyle().Render("🔑 " + msg.label + ": ")
+		if msg.plain {
+			m.secret.EchoMode = textinput.EchoNormal
+			m.secret.Prompt = promptStyle().Render(msg.label + " ")
+		}
 		m.input.Blur()
 		return m, m.secret.Focus()
 

@@ -7,6 +7,7 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/auth"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/client"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/ui"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -146,11 +147,29 @@ var workspaceListCmd = &cobra.Command{
 var workspaceRemoveCmd = &cobra.Command{
 	Use:   "remove <name>",
 	Short: "Remove a workspace and forget its stored credential",
-	Args:  cobra.ExactArgs(1),
+	Long: `Removes a workspace, after showing it and asking you to confirm. --force
+skips the question, and scripts and CI must pass it.`,
+	Annotations: confirmsDelete,
+	Args:        cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := canConfirm(); err != nil {
+			return err
+		}
 		name := args[0]
 		reg, err := workspace.Load()
 		if err != nil {
+			return err
+		}
+		w, known := reg.Get(name)
+		if !known {
+			return fmt.Errorf("no workspace named %q -- `quillink workspace list` shows yours", name)
+		}
+		ok, err := confirmDelete("workspace", []ui.Field{
+			{Label: "Name", Value: name},
+			{Label: "API base", Value: w.APIBase},
+			{Label: "Effect", Value: "forgets its sign-in on this device; nothing changes on the server"},
+		})
+		if err != nil || !ok {
 			return err
 		}
 		delete(reg.Workspaces, name)

@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/auth"
@@ -36,6 +37,9 @@ func Execute() {
 
 // exitCode is the code a failed command exits with.
 func exitCode(err error) int {
+	if errors.Is(err, errNeedsForce) {
+		return output.ExitInvalidInput
+	}
 	if apiErr, ok := err.(*client.APIError); ok {
 		return output.CodeForStatus(apiErr.Status)
 	}

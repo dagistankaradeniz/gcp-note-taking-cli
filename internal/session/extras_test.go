@@ -239,3 +239,23 @@ func TestClearDuringARefreshKeepsThePaneIntact(t *testing.T) {
 		t.Fatalf("got %q", pane(tm))
 	}
 }
+
+func TestPlainPromptShowsWhatIsTyped(t *testing.T) {
+	reply := make(chan secretReply, 1)
+	m := session(t, Host{}, 12)
+	m, _ = m.Update(promptMsg{label: "Delete? [y/N]", plain: true, reply: reply})
+	m = typeKeys(m, "y")
+	if !strings.Contains(ansi.Strip(m.(model).bottom()), "Delete? [y/N] y") {
+		t.Fatalf("got %q", ansi.Strip(m.(model).bottom()))
+	}
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if r := <-reply; r.value != "y" {
+		t.Fatalf("got %q", r.value)
+	}
+
+	m, _ = m.Update(promptMsg{label: "Password", reply: reply})
+	m = typeKeys(m, "secret")
+	if strings.Contains(ansi.Strip(m.(model).bottom()), "secret") {
+		t.Fatal("a secret prompt stays masked after a plain one")
+	}
+}

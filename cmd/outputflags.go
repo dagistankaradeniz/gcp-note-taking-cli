@@ -19,7 +19,7 @@ import (
 var (
 	outputFlag string
 	outFile    string
-	outForce   bool
+	forceFlag  bool
 )
 
 // outState is the file being written for the current command, if any.
@@ -32,7 +32,7 @@ var outState struct {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&outputFlag, "output", "", "output format: table, json, csv, yaml or md (default: table, or from the --out file's extension)")
 	rootCmd.PersistentFlags().StringVar(&outFile, "out", "", "save the result to this file instead of printing it")
-	rootCmd.PersistentFlags().BoolVar(&outForce, "force", false, "with --out, overwrite an existing file")
+	rootCmd.PersistentFlags().BoolVar(&forceFlag, "force", false, "with --out, overwrite an existing file; on a delete, skip the confirmation (required in scripts and CI)")
 	rootCmd.PersistentPreRunE = prepareOutput
 	output.BodyText = bodyToText
 }
@@ -68,7 +68,7 @@ func prepareOutput(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(target); err == nil && !outForce {
+	if _, err := os.Stat(target); err == nil && !forceFlag {
 		return fmt.Errorf("%s already exists -- add --force to overwrite it", outFile)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
