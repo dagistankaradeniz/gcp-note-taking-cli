@@ -259,3 +259,24 @@ func TestPlainPromptShowsWhatIsTyped(t *testing.T) {
 		t.Fatal("a secret prompt stays masked after a plain one")
 	}
 }
+
+func TestWipingKeysClearsWhatTheyDecrypted(t *testing.T) {
+	h := Host{Cacheable: func(string) bool { return true }}
+	m := start(session(t, h, 20), "note list")
+	m, _ = m.Update(outputMsg("secret title\nhalf a li"))
+	m, _ = m.Update(doneMsg{outcome: Ran})
+	m = start(m, "note get 1")
+	m, _ = m.Update(outputMsg("secret body"))
+
+	m, _ = m.Update(wipedMsg("Locked."))
+	if p := pane(m); strings.Contains(p, "secret") || strings.Contains(p, "half") || !strings.Contains(p, "✓ Locked.") {
+		t.Fatalf("got %q", p)
+	}
+	mm := m.(model)
+	if len(mm.cache) != 0 || mm.fresh != "" || mm.partial != "" {
+		t.Fatalf("something survived: %+v %q %q", mm.cache, mm.fresh, mm.partial)
+	}
+	if strings.Contains(strings.Join(mm.rows, "\n"), "secret") {
+		t.Fatal("nothing to scroll back to")
+	}
+}

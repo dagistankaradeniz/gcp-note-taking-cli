@@ -138,6 +138,11 @@ func ask(label string, plain bool) (string, error) {
 	return r.value, r.err
 }
 
+// Wiped reports that unlocked keys are gone: the session clears everything
+// it has shown, as that may be what they decrypted, and shows text in its
+// place. It's false when no session is running.
+func Wiped(text string) bool { return send(wipedMsg(text)) }
+
 type secretReply struct {
 	value string
 	err   error
@@ -146,6 +151,7 @@ type secretReply struct {
 // Messages.
 type (
 	outputMsg   string
+	wipedMsg    string
 	doneMsg     struct{ outcome Outcome }
 	progressMsg struct{ state *progress.State }
 	tickMsg     struct{}
@@ -426,6 +432,15 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.add(m.partial[:i])
 		m.partial = m.partial[i+1:]
+		return m, nil
+
+	case wipedMsg:
+		m.lines, m.partial, m.intro, m.introAt = nil, "", nil, 0
+		m.stale, m.fresh = 0, ""
+		m.gen++
+		m.follow = true
+		clear(m.cache)
+		m.add(ui.Render(ui.Fg(ui.Green, "✓", true) + " " + string(msg)))
 		return m, nil
 
 	case progressMsg:

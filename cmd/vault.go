@@ -12,6 +12,7 @@ import (
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/notecrypto"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/output"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/progress"
+	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/session"
 	"github.com/dagistankaradeniz/gcp-note-taking-cli/internal/zkcrypto"
 	"github.com/spf13/cobra"
 )
@@ -233,7 +234,9 @@ var vaultLockCmd = &cobra.Command{
 	Short: "Lock the Vault (clear its key from memory)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if vaultSession.wipe() {
-			fmt.Fprintln(os.Stderr, "Vault locked.")
+			if !session.Wiped("Vault locked, and the output above cleared.") {
+				fmt.Fprintln(os.Stderr, "Vault locked.")
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, "The Vault isn't unlocked.")
 		}

@@ -70,7 +70,7 @@ Run `quillink` with no arguments in a terminal to open a session: a short banner
 - While you type, a list of matching commands and flags appears under the box: ↑/↓ to pick, Tab to accept, Esc to hide. Without the list, ↑/↓ recall earlier commands. History is kept in memory only, and lines that pass `--token` are never recorded.
 - Ctrl-C twice leaves the session (a running command is stopped with it).
 - Passwords and keys are asked for in the box itself, masked, and never enter history. `--*-stdin` flags don't work inside the session; leave them off to be asked.
-- A Zero-Knowledge account is unlocked once per session instead of per command. The key stays in memory only and is wiped after 15 minutes without use, on `lock`, and on `exit` / Ctrl-D.
+- A Zero-Knowledge account is unlocked once per session instead of per command. The key stays in memory only and is wiped after 15 minutes without use, on `lock`, and on `exit` / Ctrl-D. Locking also clears the session's output, so decrypted text doesn't stay on screen.
 - `clear` (or Ctrl-L) clears the screen. Ctrl-C during the banner animation skips it.
 - Scripts are unaffected: when stdin or stdout isn't a terminal, or with `--json`, bare `quillink` prints help as before.
 - `NO_COLOR` turns colour off everywhere; `QUILLINK_NO_ANIMATION=1` shows the banner without the animation; `QUILLINK_THEME=light` or `dark` overrides the detected terminal background. Help text is coloured on a terminal and plain when piped.

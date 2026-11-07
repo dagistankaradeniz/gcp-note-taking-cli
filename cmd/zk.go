@@ -26,7 +26,8 @@ import (
 // `quillink` invocation re-derives it from scratch. Inside the interactive
 // session (bare `quillink`, interactive.go) it is kept for the session
 // instead, still in memory only, and wiped after zkSessionIdle without
-// use, on `lock`, and when the session ends.
+// use, on `lock`, and when the session ends. Locking also clears the
+// session's output, so what the key decrypted doesn't outlive it.
 
 var (
 	zkPassphraseStdin bool
@@ -156,6 +157,7 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clear(secretKeyRaw)
 
 	params := zkcrypto.KdfParams{Algorithm: *status.KdfAlgorithm, Salt: *status.Salt}
 	if status.KdfIterations != nil {
@@ -174,6 +176,7 @@ func resolveZkDek(c *client.Client) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("derive account key: %w", err)
 	}
+	defer clear(kek)
 	verifierHash, err := zkcrypto.DeriveVerifierHash(passphrase, secretKeyRaw, params)
 	if err != nil {
 		return nil, fmt.Errorf("derive verifier: %w", err)
@@ -233,7 +236,11 @@ func (s *sessionKey) put(owner string, key []byte) {
 	s.Lock()
 	defer s.Unlock()
 	s.owner, s.key = owner, key
-	s.timer = time.AfterFunc(zkSessionIdle, func() { s.wipe() })
+	s.timer = time.AfterFunc(zkSessionIdle, func() {
+		if s.wipe() {
+			session.Wiped(fmt.Sprintf("Locked after %d min idle. Output was cleared.", int(zkSessionIdle.Minutes())))
+		}
+	})
 }
 
 // wipe zeroes and drops the cached key; it reports whether one was held.

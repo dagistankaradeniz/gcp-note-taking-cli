@@ -199,7 +199,7 @@ func runSessionLine(line string) session.Outcome {
 		return session.Clear
 	case "lock":
 		if zkSessionWipe() {
-			success("Locked: unlocked keys are cleared from memory.")
+			session.Wiped("Locked: unlocked keys are cleared from memory, and the output above with them.")
 		} else {
 			ui.Notice(os.Stdout, "Nothing is unlocked.")
 		}

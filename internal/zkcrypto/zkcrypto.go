@@ -136,6 +136,7 @@ func deriveIntermediateBits(passphrase string, params KdfParams) ([]byte, error)
 // info string.
 func hkdfCombined(intermediateBits, secretKeyRaw, info []byte) ([]byte, error) {
 	ikm := append(append([]byte{}, intermediateBits...), secretKeyRaw...)
+	defer clear(ikm)
 	return hkdf.Key(sha256.New, ikm, nil, string(info), aesKeyLength)
 }
 
@@ -146,6 +147,7 @@ func DeriveKek(passphrase string, secretKeyRaw []byte, params KdfParams) ([]byte
 	if err != nil {
 		return nil, err
 	}
+	defer clear(intermediateBits)
 	return hkdfCombined(intermediateBits, secretKeyRaw, kekInfo)
 }
 
@@ -158,10 +160,12 @@ func DeriveVerifierHash(passphrase string, secretKeyRaw []byte, params KdfParams
 	if err != nil {
 		return "", err
 	}
+	defer clear(intermediateBits)
 	bits, err := hkdfCombined(intermediateBits, secretKeyRaw, verifierInfo)
 	if err != nil {
 		return "", err
 	}
+	defer clear(bits)
 	return base64.StdEncoding.EncodeToString(bits), nil
 }
 
