@@ -1,8 +1,9 @@
 // Package session is the interactive `quillink` session: a full-window
 // view with the app name pinned top left and the version top right,
-// command output in a scrollable pane (mouse wheel, PgUp/PgDn), and an
-// input box pinned to the bottom with a status line under it. It doesn't
-// run commands itself; the Host does (the cmd package).
+// command output in a scrollable pane (mouse wheel, PgUp/PgDn) that
+// selects and copies with the mouse, and an input box pinned to the
+// bottom with a status line under it. It doesn't run commands itself; the
+// Host does (the cmd package).
 package session
 
 import (
@@ -150,6 +151,10 @@ type model struct {
 	secret  textinput.Model
 	out     viewport.Model
 	lines   []string // output so far, oldest first
+	gen     int      // counts add calls: lines can change at a constant length
+	rows    []string // what the pane shows: everything wrapped to its width
+	cont    []bool   // rows[i] carries on the line of rows[i-1]
+	shown   paneKey  // what rows was built from
 	intro   []string // banner frames; nil once cleared
 	introAt int
 	follow  bool // keep the pane scrolled to the newest output
@@ -173,6 +178,21 @@ type model struct {
 	lastEnd time.Time // when the last command finished; zero after a clear
 	quit    bool
 	killed  bool
+
+	pick      selection
+	clicks    int // 1-3: single, double, triple
+	clickAt   point
+	clickTime time.Time
+	notice    string // shown briefly in the pane's corner
+	noticeAt  time.Time
+}
+
+// paneKey is everything the pane's rows depend on, so they're only
+// rebuilt when output arrives rather than on every key and spinner frame.
+type paneKey struct {
+	gen, lines, intros, introAt, width int
+	partial                            string
+	running                            bool
 }
 
 const (
@@ -196,7 +216,6 @@ func newModel(h Host) model {
 	sec.EchoMode = textinput.EchoPassword
 	sec.EchoCharacter = '•'
 	out := viewport.New()
-	out.SoftWrap = true
 	out.FillHeight = true
 	out.MouseWheelEnabled = true
 	// The pane scrolls with PgUp/PgDn and the wheel only: the arrow keys
@@ -213,6 +232,7 @@ func (m model) introTick() tea.Cmd {
 
 // add appends output lines to the pane.
 func (m *model) add(text string) {
+	m.gen++
 	m.lines = append(m.lines, strings.Split(text, "\n")...)
 	if over := len(m.lines) - maxLines; over > 0 {
 		m.lines = m.lines[over:]
@@ -220,27 +240,45 @@ func (m *model) add(text string) {
 }
 
 // layout sizes the output pane to the space above the input box and
-// refills it.
+// refills it when its content changed. A selection doesn't outlive that:
+// the rows it points at may have moved.
 func (m *model) layout() {
+	w := max(m.width, 20)
+	m.out.SetWidth(w)
+	m.out.SetHeight(max(m.height-lipgloss.Height(m.bottom())-1, 1))
+	key := paneKey{m.gen, len(m.lines), len(m.intro), m.introAt, w, m.partial, m.running != ""}
+	if key != m.shown {
+		m.shown = key
+		m.pick = selection{}
+		m.rows, m.cont = wrapRows(m.paneLines(w), w)
+		m.out.SetContentLines(m.rows)
+	}
+	m.out.SetYOffset(m.out.YOffset()) // the pane may have grown
+	if m.follow {
+		m.out.GotoBottom()
+	}
+}
+
+// paneLines is the pane's content, before wrapping. A running command
+// gets an empty last row: paneView draws its loader there.
+func (m model) paneLines(w int) []string {
 	var lines []string
 	if len(m.intro) > 0 {
 		lines = strings.Split(strings.TrimRight(m.intro[m.introAt], "\n"), "\n")
 	}
 	for _, l := range m.lines {
 		if label, ok := strings.CutPrefix(l, divider); ok {
-			l = rule(label, max(m.width, 20))
+			l = rule(label, w)
 		}
 		lines = append(lines, l)
 	}
 	if m.partial != "" {
 		lines = append(lines, m.partial)
 	}
-	m.out.SetWidth(max(m.width, 20))
-	m.out.SetHeight(max(m.height-lipgloss.Height(m.bottom())-1, 1))
-	m.out.SetContentLines(lines)
-	if m.follow {
-		m.out.GotoBottom()
+	if m.running != "" {
+		lines = append(lines, "")
 	}
+	return lines
 }
 
 func (m model) Init() tea.Cmd {
@@ -289,6 +327,18 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.out, _ = m.out.Update(msg)
 		m.follow = m.out.AtBottom()
 		return m, nil
+
+	case tea.MouseClickMsg:
+		return m.press(msg.Mouse())
+
+	case tea.MouseMotionMsg:
+		return m.drag(msg.Mouse())
+
+	case tea.MouseReleaseMsg:
+		return m.release()
+
+	case copiedMsg:
+		return m.copied(msg)
 
 	case introMsg:
 		if !m.animating() {
@@ -352,6 +402,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lines, m.intro, m.introAt = nil, nil, 0
 			m.lastEnd = time.Time{}
 			m.follow = true
+		default:
+			m.add(divider + m.stamp())
 		}
 		if m.host.RefreshAfter != nil && m.host.RefreshAfter(line) {
 			cmds = append(cmds, m.fetchStatus())
@@ -373,6 +425,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
+	m.pick = selection{}
 	if m.animating() {
 		m.introAt = len(m.intro) - 1 // any key finishes the banner
 	}
@@ -521,9 +574,6 @@ func (m model) submit() (tea.Model, tea.Cmd) {
 	if m.host.History != nil {
 		m.host.History.Add(line)
 	}
-	if !m.lastEnd.IsZero() {
-		m.add(divider + m.lastEnd.Format("15:04") + " · " + duration(m.lastDur))
-	}
 	m.add(ui.Render(promptStyle().Render("› ") + highlight(line, m.host.Classify)))
 	m.follow = true
 	m.running = line
@@ -569,20 +619,74 @@ func capture(fn func() Outcome) Outcome {
 }
 
 func (m model) View() tea.View {
-	v := tea.NewView(m.top() + "\n" + m.out.View() + "\n" + m.bottom())
+	v := tea.NewView(m.top() + "\n" + m.paneView() + "\n" + m.bottom())
 	if m.prompt == nil {
 		// The real terminal cursor, in the input line: under the top
-		// row, the pane, whatever sits above the box, and its border.
+		// row, the pane, the hint above the box if any, and its border.
 		pre := m.aboveBox()
 		y := 1 + m.out.Height() + strings.Count(pre, "\n") + 1
 		_, col := m.field(m.fieldWidth())
 		v.Cursor = tea.NewCursor(2+col, y)
 	}
 	v.AltScreen = true
-	// Wheel events come to the pane; selecting text takes Shift-drag
-	// (Option-drag on macOS) while the mouse is captured.
+	// Wheel and drag events come to the pane (see selection.go).
+	// Shift-drag (Option-drag on macOS) still reaches the terminal's own
+	// selection.
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// paneView is the pane with what's drawn over it: the selection, and the
+// running command's loader, the last command's time and the copy notice.
+// The loader sits at the end of the output, where the finished command's
+// divider takes over from it. Whatever can't be seen there, because the
+// pane is scrolled up, goes to the pane's bottom-right corner instead.
+func (m model) paneView() string {
+	rows := strings.Split(m.out.View(), "\n")
+	top := m.out.YOffset()
+	w := max(m.width, 20)
+	if m.pick.on {
+		for i := range rows {
+			if r := top + i; r < len(m.rows) {
+				if start, end, ok := m.pick.cols(r, ansi.StringWidth(m.rows[r])); ok {
+					rows[i] = invert(rows[i], start, end)
+				}
+			}
+		}
+	}
+	corner := ""
+	switch loader := m.loader(); {
+	case loader != "" && len(m.rows)-1-top < len(rows):
+		rows[len(m.rows)-1-top] = ruleStyled(ansi.Truncate(loader, w-6, "…"), w)
+	case loader != "":
+		corner = loader
+	case !m.follow && !m.lastEnd.IsZero():
+		corner = ui.Fg(ui.Muted, m.stamp(), false)
+	}
+	if m.notice != "" && time.Since(m.noticeAt) < noticeFor {
+		corner = ui.Fg(ui.Green, "✓ "+m.notice, false)
+	}
+	if corner != "" {
+		last := len(rows) - 1
+		rows[last] = overlay(rows[last], corner, w)
+	}
+	return strings.Join(rows, "\n")
+}
+
+// loader is the running command's spinner or progress bar.
+func (m model) loader() string {
+	switch {
+	case m.prog != nil:
+		return progress.Line(m.prog, m.frame)
+	case m.running != "":
+		return progress.Line(&progress.State{Label: commandName(m.running), Started: m.started}, m.frame)
+	}
+	return ""
+}
+
+// stamp is when the last command finished and how long it took.
+func (m model) stamp() string {
+	return m.lastEnd.Format("15:04") + " · " + duration(m.lastDur)
 }
 
 // top is the row above the output pane: the app name on the left, as in
@@ -596,7 +700,7 @@ func (m model) top() string {
 	return ui.Render(name + strings.Repeat(" ", gap) + ui.Fg(ui.Muted, c, false))
 }
 
-// bottom is everything under the output pane: spinner, input box,
+// bottom is everything under the output pane: the exit hint, input box,
 // suggestions and the status line.
 func (m model) bottom() string {
 	w := max(m.width, 20)
@@ -664,24 +768,17 @@ func (m model) field(width int) (string, int) {
 	return prompt + shown, promptW + col - off
 }
 
-// aboveBox is what sits between the pane and the input box: the spinner
-// or progress bar, and the "press again to exit" hint.
+// aboveBox is what sits between the pane and the input box: the "press
+// again to exit" hint.
 func (m model) aboveBox() string {
-	var b strings.Builder
-	switch {
-	case m.prog != nil:
-		b.WriteString(progress.Line(m.prog, m.frame) + "\n")
-	case m.running != "":
-		b.WriteString(progress.Line(&progress.State{Label: commandName(m.running), Started: m.started}, m.frame) + "\n")
+	if m.quitAt.IsZero() || time.Since(m.quitAt) >= quitWindow {
+		return ""
 	}
-	if !m.quitAt.IsZero() && time.Since(m.quitAt) < quitWindow {
-		hint := "Press Ctrl+C again to exit"
-		if m.running != "" {
-			hint = "Still running. Press Ctrl+C again to stop and exit"
-		}
-		b.WriteString(ui.Fg(ui.Amber, hint, false) + "\n")
+	hint := "Press Ctrl+C again to exit"
+	if m.running != "" {
+		hint = "Still running. Press Ctrl+C again to stop and exit"
 	}
-	return b.String()
+	return ui.Fg(ui.Amber, hint, false) + "\n"
 }
 
 // statusLine is muted, with the workspace in the brand colour when it
@@ -707,31 +804,34 @@ func (m model) statusLine(w int) string {
 	for _, u := range m.status.Unlocked {
 		right = append(right, muted("🔓 "+u))
 	}
-	if m.lastDur > 0 && m.running == "" {
-		right = append(right, muted(duration(m.lastDur)))
-	}
 	if !m.follow {
 		right = append(right, ui.Fg(ui.Amber, "scrolled up · PgDn for latest", false))
 	}
-	right = append(right, muted("Tab complete · ↑ history · PgUp scroll · Ctrl+D exit"))
 	l := " " + strings.Join(left, ui.Fg(ui.Subtle, " │ ", false))
-	r := strings.Join(right, ui.Fg(ui.Subtle, " · ", false)) + " "
-	gap := w - ansi.StringWidth(l) - ansi.StringWidth(r)
-	if gap < 1 {
-		return ansi.Truncate(l, w, "…")
+	sep := ui.Fg(ui.Subtle, " · ", false)
+	// The key hints are the first thing to go in a narrow window.
+	hints := muted("Tab complete · ↑ history · PgUp scroll · drag to copy · Ctrl+D exit")
+	for _, r := range []string{strings.Join(append(right[:len(right):len(right)], hints), sep), strings.Join(right, sep)} {
+		r += " "
+		if gap := w - ansi.StringWidth(l) - ansi.StringWidth(r); gap >= 1 {
+			return l + strings.Repeat(" ", gap) + r
+		}
 	}
-	return l + strings.Repeat(" ", gap) + r
+	return ansi.Truncate(l, w, "…")
 }
 
-// rule is the divider between commands: a dim line across the pane with
-// the previous command's finish time and duration at its right end.
-func rule(label string, w int) string {
+// rule is the divider after a command: a dim line across the pane with
+// the command's finish time and duration at its right end.
+func rule(label string, w int) string { return ruleStyled(ui.Fg(ui.Muted, label, false), w) }
+
+// ruleStyled is a rule with a label that carries its own colour.
+func ruleStyled(label string, w int) string {
 	tail := " " + label + " "
 	if ansi.StringWidth(tail)+4 > w {
 		return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w), false))
 	}
 	return ui.Render(ui.Fg(ui.Subtle, strings.Repeat("─", w-ansi.StringWidth(tail)-2), false) +
-		ui.Fg(ui.Muted, tail, false) + ui.Fg(ui.Subtle, "──", false))
+		tail + ui.Fg(ui.Subtle, "──", false))
 }
 
 // duration is short: tenths under a minute, whole seconds above.

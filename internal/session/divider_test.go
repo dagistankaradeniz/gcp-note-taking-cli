@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestDividerBetweenCommands(t *testing.T) {
+func TestDividerFollowsEachCommand(t *testing.T) {
 	var m tea.Model = newModel(Host{Run: func(string) Outcome { return Ran }})
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
 	run := func(line string) {
@@ -28,13 +28,13 @@ func TestDividerBetweenCommands(t *testing.T) {
 	}
 
 	run("whoami")
-	if n, _ := dividers(); n != 0 {
-		t.Fatal("no divider before the first command")
-	}
-	run("tag list")
 	n, line := dividers()
 	if n != 1 || ansi.StringWidth(line) != 60 || !strings.Contains(line, "s ──") {
-		t.Fatalf("want one full-width divider with a time label, got %d %q", n, line)
+		t.Fatalf("want a full-width divider with a time label as soon as a command ends, got %d %q", n, line)
+	}
+	run("tag list")
+	if n, _ := dividers(); n != 2 {
+		t.Fatalf("want a divider per command, got %d", n)
 	}
 
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
@@ -44,7 +44,7 @@ func TestDividerBetweenCommands(t *testing.T) {
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl})
 	run("note list")
-	if n, _ := dividers(); n != 0 {
-		t.Fatal("no divider before the first command after a clear")
+	if n, _ := dividers(); n != 1 {
+		t.Fatalf("a clear removes the earlier dividers, got %d", n)
 	}
 }
